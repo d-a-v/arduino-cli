@@ -174,6 +174,10 @@ type Context struct {
 	// The provided source data is used instead of reading it from disk.
 	// The keys of the map are paths relative to sketch folder.
 	SourceOverride map[string]string
+
+	// compiler options from ctags extraction
+	// example: 'char ARDUIFINEyyy = "<compiler options like> -DMYLIB_BUFFER_LEN=1234 -include \"somefile.h\"";'
+	Arduifines string
 }
 
 // ExecutableSectionSize represents a section of the executable output file
