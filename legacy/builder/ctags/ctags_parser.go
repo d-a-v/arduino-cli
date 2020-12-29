@@ -33,6 +33,7 @@ const TEMPLATE = "template"
 const STATIC = "static"
 const EXTERN = "extern \"C\""
 const ARDUIFINE = "ARDUIFINE"
+const ARDUINOGLOBAL = "ARDUINOGLOBAL"
 
 var KNOWN_TAG_KINDS = map[string]bool{
 	"prototype": true,
@@ -52,8 +53,10 @@ func (p *CTagsParser) Parse(ctagsOutput string, mainFile *paths.Path) ([]*types.
 	p.mainFile = mainFile
 
 	for _, row := range rows {
-		if strings.Index(row, " "+ARDUIFINE) != -1 {
-			Arduifines += extractString(row)
+		if strings.Index(row, " "+ARDUINOGLOBAL) != -1 {
+			Arduifines += encloseForCmdLine(extractCtagsDoubleQuotedString(row, ARDUINOGLOBAL))
+		} else if strings.Index(row, " "+ARDUIFINE) != -1 {
+			Arduifines += encloseForCmdLine(toCompilerCmdLine(extractCtagsDoubleQuotedString(row, ARDUIFINE)))
 		} else {
 			p.tags = append(p.tags, parseTag(row))
 		}
@@ -245,12 +248,33 @@ func removeEmpty(rows []string) []string {
 	return newRows
 }
 
-func extractString (row string) string {
+func extractCtagsDoubleQuotedString (row string, directive string) string {
 	first := strings.Index(row, "\"");
 	last := strings.LastIndex(row, "\";$/;\""); // <- $/;" is a ctag addition
-	if (first <= 0 || last <= 0 || first + 1 > last - 1) {
-		//print("\nERROR: malformed \"" + ARDUIFINE + "\" global directive\n\n")
+	if (first <= 0) || (last <= 0) || (first + 1 >= last) {
+		//print("\nERROR: malformed \"" + directive + "\" global directive\n\n")
 		return ""
 	}
-	return " " + strings.Replace(strings.Replace(row[first+1 : last], "\\\\", "\\", -1), "\\\"", "\"", -1) + " "
+	return strings.Replace(strings.Replace(row[first+1 : last], "\\\\", "\\", -1), "\\\"", "\"", -1)
+}
+
+func toCompilerCmdLine (define string) string {
+	// transforms ` A = "B C" ` to `-DA="B C"`
+	// transforms ` A `         to `-DA`
+	elts := strings.SplitAfterN(define, "=", 2)
+	ret := ""
+	if len(elts) > 0 {
+		ret += "-D"+strings.TrimSpace(elts[0][:len(elts[0])-1])
+		if len(elts) > 1 {
+			ret += "="+strings.TrimSpace(elts[1])
+		}
+	}
+	return ret
+}
+
+func encloseForCmdLine (str string) string {
+	if len(str) > 0 {
+		return " \""+str+"\" "
+	}
+	return ""
 }
