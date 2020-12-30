@@ -45,7 +45,7 @@ func (s *LibrariesBuilder) Run(ctx *types.Context) error {
 	}
 
 	if len(ctx.Arduifines) > 0 {
-		ctx.GetLogger().Fprintln(os.Stdout, constants.LOG_LEVEL_DEBUG, "Additional compiler options provided by User sketch: "+ctx.Arduifines)
+		ctx.GetLogger().Println(constants.LOG_LEVEL_DEBUG, constants.MSG_ADDITIONAL_OPTIONS, ctx.Arduifines)
 	}
 
 	objectFiles, err := compileLibraries(ctx, libs, librariesBuildPath, buildProperties, includes)
