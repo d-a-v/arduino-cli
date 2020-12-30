@@ -176,7 +176,8 @@ type Context struct {
 	SourceOverride map[string]string
 
 	// compiler options from ctags extraction
-	// example: 'char ARDUIFINEyyy = "<compiler options like> -DMYLIB_BUFFER_LEN=1234 -include \"somefile.h\"";'
+	// example: 'char ARDUIFINExxx = "MYLIB_BUFFER_LEN = 1234";'
+	// example: 'char ARDUINOGLOBALyyy = "-DMYLIB_BUFFER2_LEN=1234 -free -fipa-pta";'
 	Arduifines string
 }
 
