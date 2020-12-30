@@ -263,9 +263,11 @@ func toCompilerCmdLine (define string) string {
 	// transforms ` A `         to `-DA`
 	elts := strings.SplitAfterN(define, "=", 2)
 	ret := ""
-	if len(elts) > 0 {
-		ret += "-D"+strings.TrimSpace(elts[0][:len(elts[0])-1])
-		if len(elts) > 1 {
+	eltsLength := len(elts)
+	if eltsLength > 0 {
+		equalsLength := eltsLength - 1
+		ret += "-D"+strings.TrimSpace(elts[0][:len(elts[0])-equalsLength])
+		if equalsLength > 0 {
 			ret += "="+strings.TrimSpace(elts[1])
 		}
 	}
