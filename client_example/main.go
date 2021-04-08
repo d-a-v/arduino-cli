@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
-	dbg "github.com/arduino/arduino-cli/rpc/debug"
-	"github.com/arduino/arduino-cli/rpc/settings"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	dbg "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/debug/v1"
+	"github.com/arduino/arduino-cli/rpc/cc/arduino/cli/settings/v1"
 	"google.golang.org/grpc"
 )
 
@@ -61,9 +61,9 @@ func main() {
 	defer os.RemoveAll(dataDir)
 
 	// Create an instance of the gRPC clients.
-	client := rpc.NewArduinoCoreClient(conn)
+	client := rpc.NewArduinoCoreServiceClient(conn)
 
-	settingsClient := settings.NewSettingsClient(conn)
+	settingsClient := settings.NewSettingsServiceClient(conn)
 
 	// Now we can call various methods of the API...
 
@@ -83,12 +83,32 @@ func main() {
 	callGetAll(settingsClient)
 
 	// Merge applies multiple settings values at once.
-	log.Println("calling Merge(`{\"foo\": \"bar\", \"daemon\":{\"port\":\"422\"}}`)")
-	callMerge(settingsClient)
+	log.Println("calling Merge()")
+	callMerge(settingsClient, `{"foo": {"value": "bar"}, "daemon":{"port":"422"}, "board_manager": {"additional_urls":["https://example.com"]}}`)
+
+	log.Println("calling GetAll()")
+	callGetAll(settingsClient)
+
+	log.Println("calling Merge()")
+	callMerge(settingsClient, `{"foo": {} }`)
+
+	log.Println("calling GetAll()")
+	callGetAll(settingsClient)
+
+	log.Println("calling Merge()")
+	callMerge(settingsClient, `{"foo": "bar" }`)
 
 	// Get the value of the foo key.
 	log.Println("calling GetValue(foo)")
 	callGetValue(settingsClient)
+
+	// List all the settings.
+	log.Println("calling GetAll()")
+	callGetAll(settingsClient)
+
+	// Write settings to file.
+	log.Println("calling Write()")
+	callWrite(settingsClient)
 
 	// Before we can do anything with the CLI, an "instance" must be created.
 	// We keep a reference to the created instance because we will need it to
@@ -96,8 +116,16 @@ func main() {
 	log.Println("calling Init")
 	instance := initInstance(client)
 
+	// We set up the proxy and then run the update to verify that the proxy settings are currently used
+	log.Println("calling setProxy")
+	callSetProxy(settingsClient)
+
 	// With a brand new instance, the first operation should always be updating
 	// the index.
+	log.Println("calling UpdateIndex")
+	callUpdateIndex(client, instance)
+
+	// And we run update again
 	log.Println("calling UpdateIndex")
 	callUpdateIndex(client, instance)
 
@@ -121,6 +149,9 @@ func main() {
 	// Query board details for a mkr1000
 	log.Println("calling BoardDetails(arduino:samd:mkr1000)")
 	callBoardsDetails(client, instance)
+
+	log.Println("calling BoardSearch()")
+	callBoardSearch(client, instance)
 
 	// Attach a board to a sketch.
 	// Uncomment if you do have an actual board connected.
@@ -179,6 +210,10 @@ func main() {
 	log.Println("calling LibraryInstall(WiFi101@0.15.2)")
 	callLibInstall(client, instance, "0.15.2")
 
+	// Install a library skipping deps installation
+	log.Println("calling LibraryInstall(Arduino_MKRIoTCarrier@0.9.9) skipping dependencies")
+	callLibInstallNoDeps(client, instance, "0.9.9")
+
 	// Upgrade all libs to latest
 	log.Println("calling LibraryUpgradeAll()")
 	callLibUpgradeAll(client, instance)
@@ -200,8 +235,8 @@ func main() {
 	callLibUninstall(client, instance)
 }
 
-func callVersion(client rpc.ArduinoCoreClient) {
-	versionResp, err := client.Version(context.Background(), &rpc.VersionReq{})
+func callVersion(client rpc.ArduinoCoreServiceClient) {
+	versionResp, err := client.Version(context.Background(), &rpc.VersionRequest{})
 	if err != nil {
 		log.Fatalf("Error getting version: %s", err)
 	}
@@ -209,11 +244,24 @@ func callVersion(client rpc.ArduinoCoreClient) {
 	log.Printf("arduino-cli version: %v", versionResp.GetVersion())
 }
 
-func callSetValue(client settings.SettingsClient) {
+func callSetValue(client settings.SettingsServiceClient) {
 	_, err := client.SetValue(context.Background(),
-		&settings.Value{
+		&settings.SetValueRequest{
 			Key:      "directories",
 			JsonData: `{"data": "` + dataDir + `", "downloads": "` + path.Join(dataDir, "staging") + `", "user": "` + path.Join(dataDir, "sketchbook") + `"}`,
+		})
+
+	if err != nil {
+		log.Fatalf("Error setting settings value: %s", err)
+
+	}
+}
+
+func callSetProxy(client settings.SettingsServiceClient) {
+	_, err := client.SetValue(context.Background(),
+		&settings.SetValueRequest{
+			Key:      "network.proxy",
+			JsonData: `"http://localhost:3128"`,
 		})
 
 	if err != nil {
@@ -221,11 +269,22 @@ func callSetValue(client settings.SettingsClient) {
 	}
 }
 
-func callMerge(client settings.SettingsClient) {
-	bulkSettings := `{"foo": "bar", "daemon":{"port":"422"}}`
+func callUnsetProxy(client settings.SettingsServiceClient) {
+	_, err := client.SetValue(context.Background(),
+		&settings.SetValueRequest{
+			Key:      "network.proxy",
+			JsonData: `""`,
+		})
+
+	if err != nil {
+		log.Fatalf("Error setting settings value: %s", err)
+	}
+}
+
+func callMerge(client settings.SettingsServiceClient, jsonData string) {
 	_, err := client.Merge(context.Background(),
-		&settings.RawData{
-			JsonData: bulkSettings,
+		&settings.MergeRequest{
+			JsonData: jsonData,
 		})
 
 	if err != nil {
@@ -233,7 +292,7 @@ func callMerge(client settings.SettingsClient) {
 	}
 }
 
-func callGetValue(client settings.SettingsClient) {
+func callGetValue(client settings.SettingsServiceClient) {
 	getValueResp, err := client.GetValue(context.Background(),
 		&settings.GetValueRequest{
 			Key: "foo",
@@ -246,7 +305,7 @@ func callGetValue(client settings.SettingsClient) {
 	log.Printf("Value: %s: %s", getValueResp.GetKey(), getValueResp.GetJsonData())
 }
 
-func callGetAll(client settings.SettingsClient) {
+func callGetAll(client settings.SettingsServiceClient) {
 	getAllResp, err := client.GetAll(context.Background(), &settings.GetAllRequest{})
 
 	if err != nil {
@@ -256,10 +315,21 @@ func callGetAll(client settings.SettingsClient) {
 	log.Printf("Settings: %s", getAllResp.GetJsonData())
 }
 
-func initInstance(client rpc.ArduinoCoreClient) *rpc.Instance {
+func callWrite(client settings.SettingsServiceClient) {
+	_, err := client.Write(context.Background(),
+		&settings.WriteRequest{
+			FilePath: path.Join(dataDir, "written-settings.yml"),
+		})
+
+	if err != nil {
+		log.Fatalf("Error writing settings: %s", err)
+	}
+}
+
+func initInstance(client rpc.ArduinoCoreServiceClient) *rpc.Instance {
 	// The configuration for this example client only contains the path to
 	// the data folder.
-	initRespStream, err := client.Init(context.Background(), &rpc.InitReq{})
+	initRespStream, err := client.Init(context.Background(), &rpc.InitRequest{})
 	if err != nil {
 		log.Fatalf("Error creating server instance: %s", err)
 
@@ -299,8 +369,8 @@ func initInstance(client rpc.ArduinoCoreClient) *rpc.Instance {
 	return instance
 }
 
-func callUpdateIndex(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
-	uiRespStream, err := client.UpdateIndex(context.Background(), &rpc.UpdateIndexReq{
+func callUpdateIndex(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
+	uiRespStream, err := client.UpdateIndex(context.Background(), &rpc.UpdateIndexRequest{
 		Instance: instance,
 	})
 	if err != nil {
@@ -329,8 +399,8 @@ func callUpdateIndex(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callPlatformSearch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
-	searchResp, err := client.PlatformSearch(context.Background(), &rpc.PlatformSearchReq{
+func callPlatformSearch(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
+	searchResp, err := client.PlatformSearch(context.Background(), &rpc.PlatformSearchRequest{
 		Instance:   instance,
 		SearchArgs: "samd",
 	})
@@ -343,13 +413,13 @@ func callPlatformSearch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	for _, plat := range platforms {
 		// We only print ID and version of the platforms found but you can look
 		// at the definition for the rpc.Platform struct for more fields.
-		log.Printf("Search result: %+v - %+v", plat.GetID(), plat.GetLatest())
+		log.Printf("Search result: %+v - %+v", plat.GetId(), plat.GetLatest())
 	}
 }
 
-func callPlatformInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callPlatformInstall(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	installRespStream, err := client.PlatformInstall(context.Background(),
-		&rpc.PlatformInstallReq{
+		&rpc.PlatformInstallRequest{
 			Instance:        instance,
 			PlatformPackage: "arduino",
 			Architecture:    "samd",
@@ -387,24 +457,24 @@ func callPlatformInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callPlatformList(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callPlatformList(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	listResp, err := client.PlatformList(context.Background(),
-		&rpc.PlatformListReq{Instance: instance})
+		&rpc.PlatformListRequest{Instance: instance})
 
 	if err != nil {
 		log.Fatalf("List error: %s", err)
 	}
 
-	for _, plat := range listResp.GetInstalledPlatform() {
+	for _, plat := range listResp.GetInstalledPlatforms() {
 		// We only print ID and version of the installed platforms but you can look
 		// at the definition for the rpc.Platform struct for more fields.
-		log.Printf("Installed platform: %s - %s", plat.GetID(), plat.GetInstalled())
+		log.Printf("Installed platform: %s - %s", plat.GetId(), plat.GetInstalled())
 	}
 }
 
-func callPlatformUpgrade(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callPlatformUpgrade(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	upgradeRespStream, err := client.PlatformUpgrade(context.Background(),
-		&rpc.PlatformUpgradeReq{
+		&rpc.PlatformUpgradeRequest{
 			Instance:        instance,
 			PlatformPackage: "arduino",
 			Architecture:    "samd",
@@ -441,9 +511,9 @@ func callPlatformUpgrade(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callBoardsDetails(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callBoardsDetails(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	details, err := client.BoardDetails(context.Background(),
-		&rpc.BoardDetailsReq{
+		&rpc.BoardDetailsRequest{
 			Instance: instance,
 			Fqbn:     "arduino:samd:mkr1000",
 		})
@@ -457,10 +527,26 @@ func callBoardsDetails(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	log.Printf("Config options: %s", details.GetConfigOptions())
 }
 
-func callBoardAttach(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callBoardSearch(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
+	res, err := client.BoardSearch(context.Background(),
+		&rpc.BoardSearchRequest{
+			Instance:   instance,
+			SearchArgs: "",
+		})
+
+	if err != nil {
+		log.Fatalf("Error getting board data: %s\n", err)
+	}
+
+	for _, board := range res.Boards {
+		log.Printf("Board Name: %s, Board Platform: %s\n", board.Name, board.Platform.Id)
+	}
+}
+
+func callBoardAttach(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	currDir, _ := os.Getwd()
 	boardattachresp, err := client.BoardAttach(context.Background(),
-		&rpc.BoardAttachReq{
+		&rpc.BoardAttachRequest{
 			Instance:   instance,
 			BoardUri:   "/dev/ttyACM0",
 			SketchPath: filepath.Join(currDir, "hello"),
@@ -492,10 +578,10 @@ func callBoardAttach(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callCompile(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callCompile(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	currDir, _ := os.Getwd()
 	compRespStream, err := client.Compile(context.Background(),
-		&rpc.CompileReq{
+		&rpc.CompileRequest{
 			Instance:   instance,
 			Fqbn:       "arduino:samd:mkr1000",
 			SketchPath: filepath.Join(currDir, "hello"),
@@ -531,10 +617,10 @@ func callCompile(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callUpload(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callUpload(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	currDir, _ := os.Getwd()
 	uplRespStream, err := client.Upload(context.Background(),
-		&rpc.UploadReq{
+		&rpc.UploadRequest{
 			Instance:   instance,
 			Fqbn:       "arduino:samd:mkr1000",
 			SketchPath: filepath.Join(currDir, "hello"),
@@ -568,9 +654,9 @@ func callUpload(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callListAll(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callListAll(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	boardListAllResp, err := client.BoardListAll(context.Background(),
-		&rpc.BoardListAllReq{
+		&rpc.BoardListAllRequest{
 			Instance:   instance,
 			SearchArgs: []string{"mkr"},
 		})
@@ -580,13 +666,13 @@ func callListAll(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 
 	for _, board := range boardListAllResp.GetBoards() {
-		log.Printf("%s: %s", board.GetName(), board.GetFQBN())
+		log.Printf("%s: %s", board.GetName(), board.GetFqbn())
 	}
 }
 
-func callBoardList(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callBoardList(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	boardListResp, err := client.BoardList(context.Background(),
-		&rpc.BoardListReq{Instance: instance})
+		&rpc.BoardListRequest{Instance: instance})
 
 	if err != nil {
 		log.Fatalf("Board list error: %s\n", err)
@@ -597,14 +683,14 @@ func callBoardList(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callBoardListWatch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callBoardListWatch(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	watchClient, err := client.BoardListWatch(context.Background())
 	if err != nil {
 		log.Fatalf("Board list watch error: %s\n", err)
 	}
 
 	// Start the watcher
-	watchClient.Send(&rpc.BoardListWatchReq{
+	watchClient.Send(&rpc.BoardListWatchRequest{
 		Instance: instance,
 	})
 
@@ -627,14 +713,14 @@ func callBoardListWatch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	// Watch for 10 seconds and then interrupts
 	timer := time.NewTicker(time.Duration(10 * time.Second))
 	<-timer.C
-	watchClient.Send(&rpc.BoardListWatchReq{
+	watchClient.Send(&rpc.BoardListWatchRequest{
 		Interrupt: true,
 	})
 }
 
-func callPlatformUnInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callPlatformUnInstall(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	uninstallRespStream, err := client.PlatformUninstall(context.Background(),
-		&rpc.PlatformUninstallReq{
+		&rpc.PlatformUninstallRequest{
 			Instance:        instance,
 			PlatformPackage: "arduino",
 			Architecture:    "samd",
@@ -662,9 +748,9 @@ func callPlatformUnInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance)
 	}
 }
 
-func callUpdateLibraryIndex(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callUpdateLibraryIndex(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libIdxUpdateStream, err := client.UpdateLibrariesIndex(context.Background(),
-		&rpc.UpdateLibrariesIndexReq{Instance: instance})
+		&rpc.UpdateLibrariesIndexRequest{Instance: instance})
 
 	if err != nil {
 		log.Fatalf("Error updating libraries index: %s\n", err)
@@ -688,9 +774,9 @@ func callUpdateLibraryIndex(client rpc.ArduinoCoreClient, instance *rpc.Instance
 	}
 }
 
-func callLibDownload(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibDownload(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	downloadRespStream, err := client.LibraryDownload(context.Background(),
-		&rpc.LibraryDownloadReq{
+		&rpc.LibraryDownloadRequest{
 			Instance: instance,
 			Name:     "WiFi101",
 			Version:  "0.15.2",
@@ -718,9 +804,9 @@ func callLibDownload(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callLibInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance, version string) {
+func callLibInstall(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance, version string) {
 	installRespStream, err := client.LibraryInstall(context.Background(),
-		&rpc.LibraryInstallReq{
+		&rpc.LibraryInstallRequest{
 			Instance: instance,
 			Name:     "WiFi101",
 			Version:  version,
@@ -750,9 +836,41 @@ func callLibInstall(client rpc.ArduinoCoreClient, instance *rpc.Instance, versio
 	}
 }
 
-func callLibUpgradeAll(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibInstallNoDeps(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance, version string) {
+	installRespStream, err := client.LibraryInstall(context.Background(),
+		&rpc.LibraryInstallRequest{
+			Instance: instance,
+			Name:     "Arduino_MKRIoTCarrier",
+			Version:  version,
+			NoDeps:   true,
+		})
+
+	if err != nil {
+		log.Fatalf("Error installing library: %s", err)
+	}
+
+	for {
+		installResp, err := installRespStream.Recv()
+		if err == io.EOF {
+			log.Print("Lib install done")
+			break
+		}
+
+		if err != nil {
+			log.Fatalf("Install error: %s", err)
+		}
+
+		if installResp.GetProgress() != nil {
+			log.Printf("DOWNLOAD: %s\n", installResp.GetProgress())
+		}
+		if installResp.GetTaskProgress() != nil {
+			log.Printf("TASK: %s\n", installResp.GetTaskProgress())
+		}
+	}
+}
+func callLibUpgradeAll(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libUpgradeAllRespStream, err := client.LibraryUpgradeAll(context.Background(),
-		&rpc.LibraryUpgradeAllReq{
+		&rpc.LibraryUpgradeAllRequest{
 			Instance: instance,
 		})
 
@@ -780,9 +898,9 @@ func callLibUpgradeAll(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callLibSearch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibSearch(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libSearchResp, err := client.LibrarySearch(context.Background(),
-		&rpc.LibrarySearchReq{
+		&rpc.LibrarySearchRequest{
 			Instance: instance,
 			Query:    "audio",
 		})
@@ -796,9 +914,9 @@ func callLibSearch(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callLibraryResolveDependencies(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibraryResolveDependencies(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libraryResolveDependenciesResp, err := client.LibraryResolveDependencies(context.Background(),
-		&rpc.LibraryResolveDependenciesReq{
+		&rpc.LibraryResolveDependenciesRequest{
 			Instance: instance,
 			Name:     "ArduinoIoTCloud",
 		})
@@ -816,9 +934,9 @@ func callLibraryResolveDependencies(client rpc.ArduinoCoreClient, instance *rpc.
 	}
 }
 
-func callLibList(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibList(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libLstResp, err := client.LibraryList(context.Background(),
-		&rpc.LibraryListReq{
+		&rpc.LibraryListRequest{
 			Instance:  instance,
 			All:       false,
 			Updatable: false,
@@ -828,14 +946,14 @@ func callLibList(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 		log.Fatalf("Error List Library: %s", err)
 	}
 
-	for _, res := range libLstResp.GetInstalledLibrary() {
+	for _, res := range libLstResp.GetInstalledLibraries() {
 		log.Printf("%s - %s", res.GetLibrary().GetName(), res.GetLibrary().GetVersion())
 	}
 }
 
-func callLibUninstall(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
+func callLibUninstall(client rpc.ArduinoCoreServiceClient, instance *rpc.Instance) {
 	libUninstallRespStream, err := client.LibraryUninstall(context.Background(),
-		&rpc.LibraryUninstallReq{
+		&rpc.LibraryUninstallRequest{
 			Instance: instance,
 			Name:     "WiFi101",
 		})
@@ -861,11 +979,11 @@ func callLibUninstall(client rpc.ArduinoCoreClient, instance *rpc.Instance) {
 	}
 }
 
-func callDebugger(debugStreamingOpenClient dbg.Debug_DebugClient, instance *rpc.Instance) {
+func callDebugger(debugStreamingOpenClient dbg.DebugService_DebugClient, instance *rpc.Instance) {
 	currDir, _ := os.Getwd()
 	log.Printf("Send debug request")
-	err := debugStreamingOpenClient.Send(&dbg.DebugReq{
-		DebugReq: &dbg.DebugConfigReq{
+	err := debugStreamingOpenClient.Send(&dbg.DebugRequest{
+		DebugRequest: &dbg.DebugConfigRequest{
 			Instance:   &rpc.Instance{Id: instance.GetId()},
 			Fqbn:       "arduino:samd:mkr1000",
 			SketchPath: filepath.Join(currDir, "hello"),
@@ -878,7 +996,7 @@ func callDebugger(debugStreamingOpenClient dbg.Debug_DebugClient, instance *rpc.
 	waitForPrompt(debugStreamingOpenClient, "(gdb)")
 	// Wait for gdb to init and show the prompt
 	log.Printf("Send 'info registers' rcommand")
-	err = debugStreamingOpenClient.Send(&dbg.DebugReq{Data: []byte("info registers\n")})
+	err = debugStreamingOpenClient.Send(&dbg.DebugRequest{Data: []byte("info registers\n")})
 	if err != nil {
 		log.Fatalf("Send error: %s\n", err)
 	}
@@ -888,7 +1006,7 @@ func callDebugger(debugStreamingOpenClient dbg.Debug_DebugClient, instance *rpc.
 
 	// Send quit command to gdb
 	log.Printf("Send 'quit' command")
-	err = debugStreamingOpenClient.Send(&dbg.DebugReq{Data: []byte("quit\n")})
+	err = debugStreamingOpenClient.Send(&dbg.DebugRequest{Data: []byte("quit\n")})
 	if err != nil {
 		log.Fatalf("Send error: %s\n", err)
 	}
@@ -901,7 +1019,7 @@ func callDebugger(debugStreamingOpenClient dbg.Debug_DebugClient, instance *rpc.
 	}
 }
 
-func waitForPrompt(debugStreamingOpenClient dbg.Debug_DebugClient, prompt string) {
+func waitForPrompt(debugStreamingOpenClient dbg.DebugService_DebugClient, prompt string) {
 	var buffer bytes.Buffer
 	for {
 		compResp, err := debugStreamingOpenClient.Recv()
@@ -922,9 +1040,9 @@ func waitForPrompt(debugStreamingOpenClient dbg.Debug_DebugClient, prompt string
 	}
 }
 
-func callLoadSketch(client rpc.ArduinoCoreClient) {
+func callLoadSketch(client rpc.ArduinoCoreServiceClient) {
 	currDir, _ := os.Getwd()
-	sketch, err := client.LoadSketch(context.Background(), &rpc.LoadSketchReq{
+	sketch, err := client.LoadSketch(context.Background(), &rpc.LoadSketchRequest{
 		SketchPath: filepath.Join(currDir, "hello"),
 	})
 	if err != nil {

@@ -19,12 +19,12 @@ import (
 	"context"
 	"os"
 
+	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/arduino-cli/cli/errorcodes"
 	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/cli/instance"
 	"github.com/arduino/arduino-cli/commands/upload"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
-	"github.com/arduino/arduino-cli/table"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -83,7 +83,15 @@ func run(command *cobra.Command, args []string) {
 	}
 	sketchPath := initSketchPath(path)
 
-	if _, err := upload.Upload(context.Background(), &rpc.UploadReq{
+	// .pde files are still supported but deprecated, this warning urges the user to rename them
+	if files := sketches.CheckForPdeFiles(sketchPath); len(files) > 0 {
+		feedback.Error("Sketches with .pde extension are deprecated, please rename the following files to .ino:")
+		for _, f := range files {
+			feedback.Error(f)
+		}
+	}
+
+	if _, err := upload.Upload(context.Background(), &rpc.UploadRequest{
 		Instance:   instance,
 		Fqbn:       fqbn,
 		SketchPath: sketchPath.String(),
@@ -112,21 +120,4 @@ func initSketchPath(sketchPath *paths.Path) *paths.Path {
 	}
 	logrus.Infof("Reading sketch from dir: %s", wd)
 	return wd
-}
-
-type programmersList struct {
-	Programmers []*rpc.Programmer
-}
-
-func (p *programmersList) Data() interface{} {
-	return p.Programmers
-}
-
-func (p *programmersList) String() string {
-	t := table.New()
-	t.SetHeader("ID", "Programmer Name", "Platform")
-	for _, prog := range p.Programmers {
-		t.AddRow(prog.GetId(), prog.GetName(), prog.GetPlatform())
-	}
-	return t.Render()
 }

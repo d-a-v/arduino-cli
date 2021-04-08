@@ -32,7 +32,7 @@ func TestCTagsRunner(t *testing.T) {
 	sketchLocation := Abs(t, paths.New("downloaded_libraries", "Bridge", "examples", "Bridge", "Bridge.ino"))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -79,10 +79,10 @@ func TestCTagsRunner(t *testing.T) {
 func TestCTagsRunnerSketchWithClass(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := Abs(t, paths.New("sketch_with_class", "sketch.ino"))
+	sketchLocation := Abs(t, paths.New("sketch_with_class", "sketch_with_class.ino"))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -127,10 +127,10 @@ func TestCTagsRunnerSketchWithClass(t *testing.T) {
 func TestCTagsRunnerSketchWithTypename(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := Abs(t, paths.New("sketch_with_typename", "sketch.ino"))
+	sketchLocation := Abs(t, paths.New("sketch_with_typename", "sketch_with_typename.ino"))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -174,10 +174,10 @@ func TestCTagsRunnerSketchWithTypename(t *testing.T) {
 func TestCTagsRunnerSketchWithNamespace(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := Abs(t, paths.New("sketch_with_namespace", "sketch.ino"))
+	sketchLocation := Abs(t, paths.New("sketch_with_namespace", "sketch_with_namespace.ino"))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -220,10 +220,10 @@ func TestCTagsRunnerSketchWithNamespace(t *testing.T) {
 func TestCTagsRunnerSketchWithTemplates(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := Abs(t, paths.New("sketch_with_templates_and_shift", "template_and_shift.cpp"))
+	sketchLocation := Abs(t, paths.New("sketch_with_templates_and_shift", "sketch_with_templates_and_shift.cpp"))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),

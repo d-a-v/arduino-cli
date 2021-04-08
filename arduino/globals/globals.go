@@ -18,26 +18,33 @@ package globals
 var (
 	empty struct{}
 
+	// MainFileValidExtension is the extension that must be used for files in new sketches
+	MainFileValidExtension string = ".ino"
+
 	// MainFileValidExtensions lists valid extensions for a sketch file
 	MainFileValidExtensions = map[string]struct{}{
-		".ino": empty,
+		MainFileValidExtension: empty,
+		// .pde extension is deprecated and must not be used for new sketches
 		".pde": empty,
 	}
 
 	// AdditionalFileValidExtensions lists any file extension the builder considers as valid
 	AdditionalFileValidExtensions = map[string]struct{}{
-		".h":   empty,
-		".c":   empty,
-		".hpp": empty,
-		".hh":  empty,
-		".cpp": empty,
-		".s":   empty,
+		".h":    empty,
+		".c":    empty,
+		".hpp":  empty,
+		".hh":   empty,
+		".cpp":  empty,
+		".S":    empty,
+		".adoc": empty,
+		".md":   empty,
+		".json": empty,
 	}
 
 	// SourceFilesValidExtensions lists valid extensions for source files (no headers)
 	SourceFilesValidExtensions = map[string]struct{}{
 		".c":   empty,
 		".cpp": empty,
-		".s":   empty,
+		".S":   empty,
 	}
 )

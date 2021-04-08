@@ -23,8 +23,7 @@ import (
 	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/cli/instance"
 	"github.com/arduino/arduino-cli/commands/upload"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
-	"github.com/arduino/arduino-cli/table"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -67,7 +66,7 @@ func run(command *cobra.Command, args []string) {
 		os.Exit(errorcodes.ErrGeneric)
 	}
 
-	if _, err := upload.BurnBootloader(context.Background(), &rpc.BurnBootloaderReq{
+	if _, err := upload.BurnBootloader(context.Background(), &rpc.BurnBootloaderRequest{
 		Instance:   instance,
 		Fqbn:       fqbn,
 		Port:       port,
@@ -94,21 +93,4 @@ func initSketchPath(sketchPath *paths.Path) *paths.Path {
 	}
 	logrus.Infof("Reading sketch from dir: %s", wd)
 	return wd
-}
-
-type programmersList struct {
-	Programmers []*rpc.Programmer
-}
-
-func (p *programmersList) Data() interface{} {
-	return p.Programmers
-}
-
-func (p *programmersList) String() string {
-	t := table.New()
-	t.SetHeader("ID", "Programmer Name", "Platform")
-	for _, prog := range p.Programmers {
-		t.AddRow(prog.GetId(), prog.GetName(), prog.GetPlatform())
-	}
-	return t.Render()
 }

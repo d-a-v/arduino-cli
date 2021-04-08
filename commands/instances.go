@@ -35,7 +35,7 @@ import (
 	"github.com/arduino/arduino-cli/arduino/utils"
 	"github.com/arduino/arduino-cli/cli/globals"
 	"github.com/arduino/arduino-cli/configuration"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
 	"go.bug.st/downloader/v2"
@@ -131,7 +131,7 @@ func (instance *CoreInstance) checkForBuiltinTools(downloadCB DownloadProgressCB
 }
 
 // Init FIXMEDOC
-func Init(ctx context.Context, req *rpc.InitReq, downloadCB DownloadProgressCB, taskCB TaskProgressCB) (*rpc.InitResp, error) {
+func Init(ctx context.Context, req *rpc.InitRequest, downloadCB DownloadProgressCB, taskCB TaskProgressCB) (*rpc.InitResponse, error) {
 	res, err := createInstance(ctx, req.GetLibraryManagerOnly())
 	if err != nil {
 		return nil, fmt.Errorf("cannot initialize package manager: %s", err)
@@ -150,7 +150,7 @@ func Init(ctx context.Context, req *rpc.InitReq, downloadCB DownloadProgressCB, 
 		return nil, err
 	}
 
-	return &rpc.InitResp{
+	return &rpc.InitResponse{
 		Instance:             &rpc.Instance{Id: handle},
 		PlatformsIndexErrors: res.PlatformIndexErrors,
 		LibrariesIndexError:  res.LibrariesIndexError,
@@ -158,18 +158,18 @@ func Init(ctx context.Context, req *rpc.InitReq, downloadCB DownloadProgressCB, 
 }
 
 // Destroy FIXMEDOC
-func Destroy(ctx context.Context, req *rpc.DestroyReq) (*rpc.DestroyResp, error) {
+func Destroy(ctx context.Context, req *rpc.DestroyRequest) (*rpc.DestroyResponse, error) {
 	id := req.GetInstance().GetId()
 	if _, ok := instances[id]; !ok {
 		return nil, fmt.Errorf("invalid handle")
 	}
 
 	delete(instances, id)
-	return &rpc.DestroyResp{}, nil
+	return &rpc.DestroyResponse{}, nil
 }
 
 // UpdateLibrariesIndex updates the library_index.json
-func UpdateLibrariesIndex(ctx context.Context, req *rpc.UpdateLibrariesIndexReq, downloadCB func(*rpc.DownloadProgress)) error {
+func UpdateLibrariesIndex(ctx context.Context, req *rpc.UpdateLibrariesIndexRequest, downloadCB func(*rpc.DownloadProgress)) error {
 	logrus.Info("Updating libraries index")
 	lm := GetLibraryManager(req.GetInstance().GetId())
 	if lm == nil {
@@ -194,7 +194,7 @@ func UpdateLibrariesIndex(ctx context.Context, req *rpc.UpdateLibrariesIndexReq,
 }
 
 // UpdateIndex FIXMEDOC
-func UpdateIndex(ctx context.Context, req *rpc.UpdateIndexReq, downloadCB DownloadProgressCB) (*rpc.UpdateIndexResp, error) {
+func UpdateIndex(ctx context.Context, req *rpc.UpdateIndexRequest, downloadCB DownloadProgressCB) (*rpc.UpdateIndexResponse, error) {
 	id := req.GetInstance().GetId()
 	_, ok := instances[id]
 	if !ok {
@@ -313,19 +313,19 @@ func UpdateIndex(ctx context.Context, req *rpc.UpdateIndexReq, downloadCB Downlo
 	if _, err := Rescan(id); err != nil {
 		return nil, fmt.Errorf("rescanning filesystem: %s", err)
 	}
-	return &rpc.UpdateIndexResp{}, nil
+	return &rpc.UpdateIndexResponse{}, nil
 }
 
 // UpdateCoreLibrariesIndex updates both Cores and Libraries indexes
-func UpdateCoreLibrariesIndex(ctx context.Context, req *rpc.UpdateCoreLibrariesIndexReq, downloadCB DownloadProgressCB) error {
-	_, err := UpdateIndex(ctx, &rpc.UpdateIndexReq{
+func UpdateCoreLibrariesIndex(ctx context.Context, req *rpc.UpdateCoreLibrariesIndexRequest, downloadCB DownloadProgressCB) error {
+	_, err := UpdateIndex(ctx, &rpc.UpdateIndexRequest{
 		Instance: req.Instance,
 	}, downloadCB)
 	if err != nil {
 		return err
 	}
 
-	err = UpdateLibrariesIndex(ctx, &rpc.UpdateLibrariesIndexReq{
+	err = UpdateLibrariesIndex(ctx, &rpc.UpdateLibrariesIndexRequest{
 		Instance: req.Instance,
 	}, downloadCB)
 	if err != nil {
@@ -336,7 +336,7 @@ func UpdateCoreLibrariesIndex(ctx context.Context, req *rpc.UpdateCoreLibrariesI
 }
 
 // Outdated returns a list struct containing both Core and Libraries that can be updated
-func Outdated(ctx context.Context, req *rpc.OutdatedReq) (*rpc.OutdatedResp, error) {
+func Outdated(ctx context.Context, req *rpc.OutdatedRequest) (*rpc.OutdatedResponse, error) {
 	id := req.GetInstance().GetId()
 
 	libraryManager := GetLibraryManager(id)
@@ -386,9 +386,9 @@ func Outdated(ctx context.Context, req *rpc.OutdatedReq) (*rpc.OutdatedResp, err
 		}
 	}
 
-	return &rpc.OutdatedResp{
-		OutdatedLibrary:  outdatedLibraries,
-		OutdatedPlatform: outdatedPlatforms,
+	return &rpc.OutdatedResponse{
+		OutdatedLibraries: outdatedLibraries,
+		OutdatedPlatforms: outdatedPlatforms,
 	}, nil
 }
 
@@ -454,7 +454,7 @@ func getOutputRelease(lib *librariesindex.Release) *rpc.LibraryRelease {
 }
 
 // Upgrade downloads and installs outdated Cores and Libraries
-func Upgrade(ctx context.Context, req *rpc.UpgradeReq, downloadCB DownloadProgressCB, taskCB TaskProgressCB) error {
+func Upgrade(ctx context.Context, req *rpc.UpgradeRequest, downloadCB DownloadProgressCB, taskCB TaskProgressCB) error {
 	downloaderConfig, err := GetDownloaderConfig()
 	if err != nil {
 		return err
@@ -519,6 +519,17 @@ func Upgrade(ctx context.Context, req *rpc.UpgradeReq, downloadCB DownloadProgre
 				}
 
 				ref := &packagemanager.PlatformReference{
+					Package:              installedRelease.Platform.Package.Name,
+					PlatformArchitecture: installedRelease.Platform.Architecture,
+					PlatformVersion:      installedRelease.Version,
+				}
+				// Get list of installed tools needed by the currently installed version
+				_, installedTools, err := pm.FindPlatformReleaseDependencies(ref)
+				if err != nil {
+					return err
+				}
+
+				ref = &packagemanager.PlatformReference{
 					Package:              latest.Platform.Package.Name,
 					PlatformArchitecture: latest.Platform.Architecture,
 					PlatformVersion:      latest.Version,
@@ -590,6 +601,24 @@ func Upgrade(ctx context.Context, req *rpc.UpgradeReq, downloadCB DownloadProgre
 					}
 				}
 
+				// Uninstall unused tools
+				for _, toolRelease := range installedTools {
+					if !pm.IsToolRequired(toolRelease) {
+						log := pm.Log.WithField("Tool", toolRelease)
+
+						log.Info("Uninstalling tool")
+						taskCB(&rpc.TaskProgress{Name: "Uninstalling " + toolRelease.String() + ", tool is no more required"})
+
+						if err := pm.UninstallTool(toolRelease); err != nil {
+							log.WithError(err).Error("Error uninstalling")
+							return err
+						}
+
+						log.Info("Tool uninstalled")
+						taskCB(&rpc.TaskProgress{Message: toolRelease.String() + " uninstalled", Completed: true})
+					}
+				}
+
 				// Perform post install
 				if !req.SkipPostInstall {
 					logrus.Info("Running post_install script")
@@ -609,7 +638,7 @@ func Upgrade(ctx context.Context, req *rpc.UpgradeReq, downloadCB DownloadProgre
 }
 
 // Rescan restart discoveries for the given instance
-func Rescan(instanceID int32) (*rpc.RescanResp, error) {
+func Rescan(instanceID int32) (*rpc.RescanResponse, error) {
 	coreInstance, ok := instances[instanceID]
 	if !ok {
 		return nil, fmt.Errorf("invalid handle")
@@ -622,7 +651,7 @@ func Rescan(instanceID int32) (*rpc.RescanResp, error) {
 	coreInstance.PackageManager = res.Pm
 	coreInstance.lm = res.Lm
 
-	return &rpc.RescanResp{
+	return &rpc.RescanResponse{
 		PlatformsIndexErrors: res.PlatformIndexErrors,
 		LibrariesIndexError:  res.LibrariesIndexError,
 	}, nil
@@ -728,7 +757,7 @@ func createInstance(ctx context.Context, getLibOnly bool) (*createInstanceResult
 }
 
 // LoadSketch collects and returns all files composing a sketch
-func LoadSketch(ctx context.Context, req *rpc.LoadSketchReq) (*rpc.LoadSketchResp, error) {
+func LoadSketch(ctx context.Context, req *rpc.LoadSketchRequest) (*rpc.LoadSketchResponse, error) {
 	sketch, err := builder.SketchLoad(req.SketchPath, "")
 	if err != nil {
 		return nil, fmt.Errorf("Error loading sketch %v: %v", req.SketchPath, err)
@@ -744,10 +773,16 @@ func LoadSketch(ctx context.Context, req *rpc.LoadSketchReq) (*rpc.LoadSketchRes
 		additionalFiles[i] = file.Path
 	}
 
-	return &rpc.LoadSketchResp{
+	rootFolderFiles := make([]string, len(sketch.RootFolderFiles))
+	for i, file := range sketch.RootFolderFiles {
+		rootFolderFiles[i] = file.Path
+	}
+
+	return &rpc.LoadSketchResponse{
 		MainFile:         sketch.MainFile.Path,
 		LocationPath:     sketch.LocationPath,
 		OtherSketchFiles: otherSketchFiles,
 		AdditionalFiles:  additionalFiles,
+		RootFolderFiles:  rootFolderFiles,
 	}, nil
 }

@@ -23,12 +23,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	"github.com/arduino/arduino-cli/arduino/sketches"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 )
 
 // ArchiveSketch FIXMEDOC
-func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchReq) (*rpc.ArchiveSketchResp, error) {
+func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchRequest) (*rpc.ArchiveSketchResponse, error) {
 	// sketchName is the name of the sketch without extension, for example "MySketch"
 	var sketchName string
 
@@ -37,27 +38,17 @@ func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchReq) (*rpc.Archive
 		sketchPath = paths.New(".")
 	}
 
-	sketchPath, err := sketchPath.Clean().Abs()
+	sketch, err := sketches.NewSketchFromPath(sketchPath)
 	if err != nil {
-		return nil, fmt.Errorf("Error getting absolute sketch path %v", err)
+		return nil, err
 	}
 
-	// Get the sketch name and make sketchPath point to the ino file
-	if sketchPath.IsDir() {
-		sketchName = sketchPath.Base()
-		sketchPath = sketchPath.Join(sketchName + ".ino")
-	} else if sketchPath.Ext() == ".ino" {
-		sketchName = strings.TrimSuffix(sketchPath.Base(), ".ino")
-	}
-
-	// Checks if it's really a sketch
-	if sketchPath.NotExist() {
-		return nil, fmt.Errorf("specified path is not a sketch: %v", sketchPath.String())
-	}
+	sketchPath = sketch.FullPath
+	sketchName = sketch.Name
 
 	archivePath := paths.New(req.ArchivePath)
 	if archivePath == nil {
-		archivePath = sketchPath.Parent().Parent()
+		archivePath = sketchPath.Parent()
 	}
 
 	archivePath, err = archivePath.Clean().Abs()
@@ -76,7 +67,7 @@ func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchReq) (*rpc.Archive
 		return nil, fmt.Errorf("archive already exists")
 	}
 
-	filesToZip, err := sketchPath.Parent().ReadDirRecursive()
+	filesToZip, err := sketchPath.ReadDirRecursive()
 	if err != nil {
 		return nil, fmt.Errorf("Error retrieving sketch files: %v", err)
 	}
@@ -94,7 +85,7 @@ func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchReq) (*rpc.Archive
 	for _, f := range filesToZip {
 
 		if !req.IncludeBuildDir {
-			filePath, err := sketchPath.Parent().Parent().RelTo(f)
+			filePath, err := sketchPath.Parent().RelTo(f)
 			if err != nil {
 				return nil, fmt.Errorf("Error calculating relative file path: %v", err)
 			}
@@ -107,13 +98,13 @@ func ArchiveSketch(ctx context.Context, req *rpc.ArchiveSketchReq) (*rpc.Archive
 
 		// We get the parent path since we want the archive to unpack as a folder.
 		// If we don't do this the archive would contain all the sketch files as top level.
-		err = addFileToSketchArchive(zipWriter, f, sketchPath.Parent().Parent())
+		err = addFileToSketchArchive(zipWriter, f, sketchPath.Parent())
 		if err != nil {
 			return nil, fmt.Errorf("Error adding file to archive: %v", err)
 		}
 	}
 
-	return &rpc.ArchiveSketchResp{}, nil
+	return &rpc.ArchiveSketchResponse{}, nil
 }
 
 // Adds a single file to an existing zip file

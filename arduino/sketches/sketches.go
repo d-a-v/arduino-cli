@@ -20,15 +20,18 @@ import (
 	"fmt"
 
 	"github.com/arduino/arduino-cli/arduino/builder"
+	"github.com/arduino/arduino-cli/arduino/globals"
+	"github.com/arduino/arduino-cli/arduino/sketch"
 	"github.com/arduino/go-paths-helper"
 	"github.com/pkg/errors"
 )
 
 // Sketch is a sketch for Arduino
 type Sketch struct {
-	Name     string
-	FullPath *paths.Path
-	Metadata *Metadata
+	Name              string
+	MainFileExtension string
+	FullPath          *paths.Path
+	Metadata          *Metadata
 }
 
 // Metadata is the kind of data associated to a project such as the connected board
@@ -52,17 +55,35 @@ func NewSketchFromPath(path *paths.Path) (*Sketch, error) {
 	if !path.IsDir() {
 		path = path.Parent()
 	}
-	sketchFile := path.Join(path.Base() + ".ino")
-	if !sketchFile.Exist() {
-		return nil, errors.Errorf("no valid sketch found in %s: missing %s", path, sketchFile.Base())
+
+	var mainSketchFile *paths.Path
+	for ext := range globals.MainFileValidExtensions {
+		candidateSketchMainFile := path.Join(path.Base() + ext)
+		if candidateSketchMainFile.Exist() {
+			if mainSketchFile == nil {
+				mainSketchFile = candidateSketchMainFile
+			} else {
+				return nil, errors.Errorf("multiple main sketch files found (%v, %v)",
+					mainSketchFile,
+					candidateSketchMainFile,
+				)
+			}
+		}
 	}
-	sketch := &Sketch{
-		FullPath: path,
-		Name:     path.Base(),
-		Metadata: &Metadata{},
+
+	if mainSketchFile == nil || sketch.CheckSketchCasing(path.String()) != nil {
+		sketchFile := path.Join(path.Base() + globals.MainFileValidExtension)
+		return nil, errors.Errorf("no valid sketch found in %s: missing %s", path, sketchFile)
 	}
-	sketch.ImportMetadata()
-	return sketch, nil
+
+	s := &Sketch{
+		FullPath:          path,
+		MainFileExtension: mainSketchFile.Ext(),
+		Name:              path.Base(),
+		Metadata:          &Metadata{},
+	}
+	s.ImportMetadata()
+	return s, nil
 }
 
 // ImportMetadata imports metadata into the sketch from a sketch.json file in the root
@@ -107,4 +128,21 @@ func (s *Sketch) BuildPath() (*paths.Path, error) {
 		return nil, fmt.Errorf("sketch path is empty")
 	}
 	return builder.GenBuildPath(s.FullPath), nil
+}
+
+// CheckForPdeFiles returns all files ending with .pde extension
+// in dir, this is mainly used to warn the user that these files
+// must be changed to .ino extension.
+// When .pde files won't be supported anymore this function must be removed.
+func CheckForPdeFiles(sketch *paths.Path) []*paths.Path {
+	if sketch.IsNotDir() {
+		sketch = sketch.Parent()
+	}
+
+	files, err := sketch.ReadDirRecursive()
+	if err != nil {
+		return []*paths.Path{}
+	}
+	files.FilterSuffix(".pde")
+	return files
 }

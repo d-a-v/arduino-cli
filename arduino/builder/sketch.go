@@ -187,7 +187,7 @@ func SketchLoad(sketchPath, buildPath string) (*sketch.Sketch, error) {
 		}
 
 		// ignore if file extension doesn't match
-		ext := strings.ToLower(filepath.Ext(path))
+		ext := filepath.Ext(path)
 		_, isMain := globals.MainFileValidExtensions[ext]
 		_, isAdditional := globals.AdditionalFileValidExtensions[ext]
 		if !(isMain || isAdditional) {
@@ -288,6 +288,9 @@ func SketchCopyAdditionalFiles(sketch *sketch.Sketch, destPath string, overrides
 			}
 			sourceBytes = s
 		}
+
+		// tag each addtional file with the filename of the source it was copied from
+		sourceBytes = append([]byte("#line 1 "+QuoteCppString(item.Path)+"\n"), sourceBytes...)
 
 		err = writeIfDifferent(sourceBytes, targetPath)
 		if err != nil {

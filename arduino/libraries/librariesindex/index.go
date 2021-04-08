@@ -20,7 +20,7 @@ import (
 
 	"github.com/arduino/arduino-cli/arduino/libraries"
 	"github.com/arduino/arduino-cli/arduino/resources"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	semver "go.bug.st/relaxed-semver"
 )
 
@@ -136,7 +136,9 @@ func (idx *Index) FindLibraryUpdate(lib *libraries.Library) *Release {
 	if indexLib == nil {
 		return nil
 	}
-	if indexLib.Latest.Version.GreaterThan(lib.Version) {
+	// If a library.properties has an invalid version property, usually empty or malformed,
+	// the latest available version is returned
+	if lib.Version == nil || indexLib.Latest.Version.GreaterThan(lib.Version) {
 		return indexLib.Latest
 	}
 	return nil

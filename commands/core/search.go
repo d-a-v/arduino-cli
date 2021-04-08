@@ -21,21 +21,20 @@ import (
 	"strings"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
+	"github.com/arduino/arduino-cli/arduino/utils"
 	"github.com/arduino/arduino-cli/commands"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 )
 
-func match(line, searchArgs string) bool {
-	return strings.Contains(strings.ToLower(line), strings.ToLower(searchArgs))
-}
-
-func exactMatch(line, searchArgs string) bool {
-	return strings.Compare(strings.ToLower(line), strings.ToLower(searchArgs)) == 0
-}
+// maximumSearchDistance is the maximum Levenshtein distance accepted when using fuzzy search.
+// This value is completely arbitrary and picked randomly.
+const maximumSearchDistance = 20
 
 // PlatformSearch FIXMEDOC
-func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc.PlatformSearchResp, error) {
-	pm := commands.GetPackageManager(instanceID)
+func PlatformSearch(req *rpc.PlatformSearchRequest) (*rpc.PlatformSearchResponse, error) {
+	searchArgs := strings.Trim(req.SearchArgs, " ")
+	allVersions := req.AllVersions
+	pm := commands.GetPackageManager(req.Instance.Id)
 	if pm == nil {
 		return nil, errors.New("invalid instance")
 	}
@@ -45,10 +44,33 @@ func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc
 		vid, pid := searchArgs[:4], searchArgs[5:]
 		res = pm.FindPlatformReleaseProvidingBoardsWithVidPid(vid, pid)
 	} else {
+
+		searchArgs := strings.Split(searchArgs, " ")
+
+		match := func(toTest []string) (bool, error) {
+			if len(searchArgs) == 0 {
+				return true, nil
+			}
+
+			for _, t := range toTest {
+				matches, err := utils.Match(t, searchArgs)
+				if err != nil {
+					return false, err
+				}
+				if matches {
+					return matches, nil
+				}
+			}
+			return false, nil
+		}
+
 		for _, targetPackage := range pm.Packages {
 			for _, platform := range targetPackage.Platforms {
 				// discard invalid platforms
-				if platform == nil || platform.Name == "" {
+				// Users can install platforms manually in the Sketchbook hardware folder,
+				// the core search command must operate only on platforms installed through
+				// the PlatformManager, thus we skip the manually installed ones.
+				if platform == nil || platform.Name == "" || platform.ManuallyInstalled {
 					continue
 				}
 
@@ -58,28 +80,30 @@ func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc
 					continue
 				}
 
-				// platform has a valid release, check if it matches the search arguments
-				if match(platform.Name, searchArgs) || match(platform.Architecture, searchArgs) ||
-					exactMatch(platform.String(), searchArgs) || match(targetPackage.Name, searchArgs) ||
-					match(targetPackage.Maintainer, searchArgs) || match(targetPackage.WebsiteURL, searchArgs) {
-					if allVersions {
-						res = append(res, platform.GetAllReleases()...)
-					} else {
-						res = append(res, platformRelease)
-					}
+				// Gather all strings that can be used for searching
+				toTest := []string{
+					platform.String(),
+					platform.Name,
+					platform.Architecture,
+					targetPackage.Name,
+					targetPackage.Maintainer,
+					targetPackage.WebsiteURL,
+				}
+				for _, board := range platformRelease.BoardsManifest {
+					toTest = append(toTest, board.Name)
+				}
+
+				// Search
+				if ok, err := match(toTest); err != nil {
+					return nil, err
+				} else if !ok {
+					continue
+				}
+
+				if allVersions {
+					res = append(res, platform.GetAllReleases()...)
 				} else {
-					// if we didn't find a match in the platform data, search for
-					// a match in the boards manifest
-					for _, board := range platformRelease.BoardsManifest {
-						if match(board.Name, searchArgs) {
-							if allVersions {
-								res = append(res, platform.GetAllReleases()...)
-							} else {
-								res = append(res, platformRelease)
-							}
-							break
-						}
-					}
+					res = append(res, platformRelease)
 				}
 			}
 		}
@@ -89,5 +113,5 @@ func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc
 	for i, platformRelease := range res {
 		out[i] = commands.PlatformReleaseToRPC(platformRelease)
 	}
-	return &rpc.PlatformSearchResp{SearchOutput: out}, nil
+	return &rpc.PlatformSearchResponse{SearchOutput: out}, nil
 }

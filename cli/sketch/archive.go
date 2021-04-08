@@ -19,10 +19,12 @@ import (
 	"context"
 	"os"
 
+	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/arduino-cli/cli/errorcodes"
 	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/commands/sketch"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	"github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -53,9 +55,17 @@ func initArchiveCommand() *cobra.Command {
 func runArchiveCommand(cmd *cobra.Command, args []string) {
 	logrus.Info("Executing `arduino sketch archive`")
 
-	sketchPath := ""
+	sketchPath := "."
 	if len(args) >= 1 {
 		sketchPath = args[0]
+	}
+
+	// .pde files are still supported but deprecated, this warning urges the user to rename them
+	if files := sketches.CheckForPdeFiles(paths.New(sketchPath)); len(files) > 0 {
+		feedback.Error("Sketches with .pde extension are deprecated, please rename the following files to .ino:")
+		for _, f := range files {
+			feedback.Error(f)
+		}
 	}
 
 	archivePath := ""
@@ -64,7 +74,7 @@ func runArchiveCommand(cmd *cobra.Command, args []string) {
 	}
 
 	_, err := sketch.ArchiveSketch(context.Background(),
-		&rpc.ArchiveSketchReq{
+		&rpc.ArchiveSketchRequest{
 			SketchPath:      sketchPath,
 			ArchivePath:     archivePath,
 			IncludeBuildDir: includeBuildDir,

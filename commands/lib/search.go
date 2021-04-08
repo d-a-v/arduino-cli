@@ -22,16 +22,14 @@ import (
 
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesindex"
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesmanager"
+	"github.com/arduino/arduino-cli/arduino/utils"
 	"github.com/arduino/arduino-cli/commands"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
-	"github.com/imjasonmiller/godice"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	semver "go.bug.st/relaxed-semver"
 )
 
-var similarityThreshold = 0.7
-
 // LibrarySearch FIXMEDOC
-func LibrarySearch(ctx context.Context, req *rpc.LibrarySearchReq) (*rpc.LibrarySearchResp, error) {
+func LibrarySearch(ctx context.Context, req *rpc.LibrarySearchRequest) (*rpc.LibrarySearchResponse, error) {
 	lm := commands.GetLibraryManager(req.GetInstance().GetId())
 	if lm == nil {
 		return nil, errors.New("invalid instance")
@@ -40,46 +38,60 @@ func LibrarySearch(ctx context.Context, req *rpc.LibrarySearchReq) (*rpc.Library
 	return searchLibrary(req, lm)
 }
 
-func searchLibrary(req *rpc.LibrarySearchReq, lm *librariesmanager.LibrariesManager) (*rpc.LibrarySearchResp, error) {
+func searchLibrary(req *rpc.LibrarySearchRequest, lm *librariesmanager.LibrariesManager) (*rpc.LibrarySearchResponse, error) {
+	query := req.GetQuery()
 	res := []*rpc.SearchedLibrary{}
-	status := rpc.LibrarySearchStatus_success
+	status := rpc.LibrarySearchStatus_LIBRARY_SEARCH_STATUS_SUCCESS
+
+	searchArgs := strings.Split(strings.Trim(query, " "), " ")
+
+	match := func(toTest []string) (bool, error) {
+		if len(searchArgs) == 0 {
+			return true, nil
+		}
+
+		for _, t := range toTest {
+			matches, err := utils.Match(t, searchArgs)
+			if err != nil {
+				return false, err
+			}
+			if matches {
+				return matches, nil
+			}
+		}
+		return false, nil
+	}
 
 	for _, lib := range lm.Index.Libraries {
-		qry := strings.ToLower(req.GetQuery())
-		if strings.Contains(strings.ToLower(lib.Name), qry) ||
-			strings.Contains(strings.ToLower(lib.Latest.Paragraph), qry) ||
-			strings.Contains(strings.ToLower(lib.Latest.Sentence), qry) {
-			releases := map[string]*rpc.LibraryRelease{}
-			for str, rel := range lib.Releases {
-				releases[str] = GetLibraryParameters(rel)
-			}
-			latest := GetLibraryParameters(lib.Latest)
-
-			searchedLib := &rpc.SearchedLibrary{
-				Name:     lib.Name,
-				Releases: releases,
-				Latest:   latest,
-			}
-			res = append(res, searchedLib)
+		toTest := []string{lib.Name, lib.Latest.Paragraph, lib.Latest.Sentence}
+		if ok, err := match(toTest); err != nil {
+			return nil, err
+		} else if !ok {
+			continue
 		}
+		res = append(res, indexLibraryToRPCSearchLibrary(lib))
 	}
 
-	if len(res) == 0 {
-		status = rpc.LibrarySearchStatus_failed
-		for _, lib := range lm.Index.Libraries {
-			if godice.CompareString(req.GetQuery(), lib.Name) > similarityThreshold {
-				res = append(res, &rpc.SearchedLibrary{
-					Name: lib.Name,
-				})
-			}
-		}
-	}
-
-	return &rpc.LibrarySearchResp{Libraries: res, Status: status}, nil
+	return &rpc.LibrarySearchResponse{Libraries: res, Status: status}, nil
 }
 
-// GetLibraryParameters FIXMEDOC
-func GetLibraryParameters(rel *librariesindex.Release) *rpc.LibraryRelease {
+// indexLibraryToRPCSearchLibrary converts a librariindex.Library to rpc.SearchLibrary
+func indexLibraryToRPCSearchLibrary(lib *librariesindex.Library) *rpc.SearchedLibrary {
+	releases := map[string]*rpc.LibraryRelease{}
+	for str, rel := range lib.Releases {
+		releases[str] = getLibraryParameters(rel)
+	}
+	latest := getLibraryParameters(lib.Latest)
+
+	return &rpc.SearchedLibrary{
+		Name:     lib.Name,
+		Releases: releases,
+		Latest:   latest,
+	}
+}
+
+// getLibraryParameters FIXMEDOC
+func getLibraryParameters(rel *librariesindex.Release) *rpc.LibraryRelease {
 	return &rpc.LibraryRelease{
 		Author:           rel.Author,
 		Version:          rel.Version.String(),
@@ -95,10 +107,10 @@ func GetLibraryParameters(rel *librariesindex.Release) *rpc.LibraryRelease {
 		Dependencies:     getLibraryDependenciesParameter(rel.GetDependencies()),
 		Resources: &rpc.DownloadResource{
 			Url:             rel.Resource.URL,
-			Archivefilename: rel.Resource.ArchiveFileName,
+			ArchiveFilename: rel.Resource.ArchiveFileName,
 			Checksum:        rel.Resource.Checksum,
 			Size:            rel.Resource.Size,
-			Cachepath:       rel.Resource.CachePath,
+			CachePath:       rel.Resource.CachePath,
 		},
 	}
 }

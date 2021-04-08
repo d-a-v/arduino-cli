@@ -1,4 +1,7 @@
-version: "2"
+version: "3"
+
+includes:
+  dist: ./DistTasks.yml
 
 tasks:
   docs:gen:commands:
@@ -16,10 +19,10 @@ tasks:
   docs:gen:protobuf:
     desc: Generate markdown contents for protobuffers
     cmds:
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,commands.md --proto_path=rpc ./rpc/commands/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,monitor.md --proto_path=rpc ./rpc/monitor/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,settings.md --proto_path=rpc ./rpc/settings/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,debug.md --proto_path=rpc ./rpc/debug/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,commands.md --proto_path=rpc ./rpc/cc/arduino/cli/commands/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,monitor.md --proto_path=rpc ./rpc/cc/arduino/cli/monitor/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,settings.md --proto_path=rpc ./rpc/cc/arduino/cli/settings/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,debug.md --proto_path=rpc ./rpc/cc/arduino/cli/debug/v1/*.proto'
       - task: docs:format
 
   docs:gen:
@@ -62,7 +65,7 @@ tasks:
       - |
         npx -p markdown-link-check -c '
         STATUS=0
-        for file in $(find -name "*.md"); do
+        for file in $(find docs -name "*.md") README.md test/README.md client_example/README.md; do
           markdown-link-check -c markdown-link-check-config.json -q "$file"
           STATUS=$(( $STATUS + $? ))
         done
@@ -74,20 +77,37 @@ tasks:
       - npx {{ .PRETTIER }} --write "**/*.md"
 
   protoc:
+    desc: Lint, format and compile protobuf definitions
+    deps:
+      - protoc:check
+      - protoc:format
+      - protoc:compile
+
+  protoc:compile:
     desc: Compile protobuf definitions
     cmds:
-      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/commands/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/monitor/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/settings/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/debug/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/cc/arduino/cli/commands/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/cc/arduino/cli/monitor/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/cc/arduino/cli/settings/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --proto_path=rpc --go_out=plugins=grpc,paths=source_relative:rpc ./rpc/cc/arduino/cli/debug/v1/*.proto'
 
   protoc:docs:
     desc: Generate docs for protobuf definitions
     cmds:
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,commands.md --proto_path=rpc ./rpc/commands/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,monitor.md --proto_path=rpc ./rpc/monitor/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,settings.md --proto_path=rpc ./rpc/settings/*.proto'
-      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,debug.md --proto_path=rpc ./rpc/debug/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,commands.md --proto_path=rpc ./rpc/cc/arduino/cli/commands/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,monitor.md --proto_path=rpc ./rpc/cc/arduino/cli/monitor/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,settings.md --proto_path=rpc ./rpc/cc/arduino/cli/settings/v1/*.proto'
+      - '{{ default "protoc" .PROTOC_BINARY }} --doc_out=./docs/rpc --doc_opt=markdown,debug.md --proto_path=rpc ./rpc/cc/arduino/cli/debug/v1/*.proto'
+
+  protoc:check:
+    desc: Perform linting of the protobuf definitions
+    cmds:
+      - buf lint rpc
+
+  protoc:format:
+    desc: Perform formatting of the protobuf definitions
+    cmds:
+      - clang-format -i rpc/cc/arduino/cli/*/*/*.proto
 
   build:
     desc: Build the project
@@ -131,6 +151,7 @@ tasks:
       - task: python:check
       - task: docs:check
       - task: config:check
+      - task: protoc:check
 
   config:check:
     desc: Check linting of configuration and supporting files
@@ -196,25 +217,39 @@ tasks:
       - git diff --exit-code ./i18n/data &> /dev/null || (cd ./i18n && rice embed-go)
 
 vars:
+  PROJECT_NAME: "arduino-cli"
+  DIST_DIR: "dist"
   # all modules of this project except for "legacy/..." module
   DEFAULT_TARGETS:
     sh: echo `go list ./... | grep -v legacy | tr '\n' ' '`
   # build vars
   COMMIT:
-    sh: echo ${TRAVIS_COMMIT:-`git log -n 1 --format=%h`}
+    sh: echo "$(git log -n 1 --format=%h)"
   TIMESTAMP:
     sh: echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  TIMESTAMP_SHORT:
+    sh: echo "{{now | date "20060102"}}"
+  TAG:
+    sh: echo "`git tag --points-at=HEAD 2> /dev/null | head -n1`"
+  VERSION: "{{ if .NIGHTLY }}nightly-{{ .TIMESTAMP_SHORT }}{{ else if .TAG }}{{ .TAG }}{{ else }}{{ .PACKAGE_NAME_PREFIX }}git-snapshot{{ end }}"
   LDFLAGS: >
-    -ldflags '-X github.com/arduino/arduino-cli/version.commit={{.COMMIT}}
-    -X github.com/arduino/arduino-cli/version.date={{.TIMESTAMP}}'
+    -ldflags
+    '
+    -X github.com/arduino/arduino-cli/version.versionString={{.VERSION}}
+    -X github.com/arduino/arduino-cli/version.commit={{ .COMMIT }}
+    -X github.com/arduino/arduino-cli/version.date={{.TIMESTAMP}}
+    '
   # test vars
   GOFLAGS: "-timeout 10m -v -coverpkg=./... -covermode=atomic"
-  TEST_VERSIONSTRING: "0.0.0-test.preview"
+  TEST_VERSION: "0.0.0-test.preview"
   TEST_COMMIT: "deadbeef"
   TEST_LDFLAGS: >
-    -ldflags  '-X github.com/arduino/arduino-cli/version.versionString={{.TEST_VERSIONSTRING}}
+    -ldflags
+    '
+    -X github.com/arduino/arduino-cli/version.versionString={{.TEST_VERSION}}
     -X github.com/arduino/arduino-cli/version.commit={{.TEST_COMMIT}}
-    -X github.com/arduino/arduino-cli/version.date={{.TIMESTAMP}}'
+    -X github.com/arduino/arduino-cli/version.date={{.TIMESTAMP}}
+    '
   # check-lint vars
   GOLINTBIN:
     sh: go list -f {{"{{"}}".Target{{"}}"}}" golang.org/x/lint/golint

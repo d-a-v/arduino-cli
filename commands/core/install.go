@@ -22,13 +22,13 @@ import (
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
 	"github.com/arduino/arduino-cli/commands"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/pkg/errors"
 )
 
 // PlatformInstall FIXMEDOC
-func PlatformInstall(ctx context.Context, req *rpc.PlatformInstallReq,
-	downloadCB commands.DownloadProgressCB, taskCB commands.TaskProgressCB) (*rpc.PlatformInstallResp, error) {
+func PlatformInstall(ctx context.Context, req *rpc.PlatformInstallRequest,
+	downloadCB commands.DownloadProgressCB, taskCB commands.TaskProgressCB) (*rpc.PlatformInstallResponse, error) {
 
 	pm := commands.GetPackageManager(req.GetInstance().GetId())
 	if pm == nil {
@@ -59,7 +59,7 @@ func PlatformInstall(ctx context.Context, req *rpc.PlatformInstallReq,
 		return nil, err
 	}
 
-	return &rpc.PlatformInstallResp{}, nil
+	return &rpc.PlatformInstallResponse{}, nil
 }
 
 func installPlatform(pm *packagemanager.PackageManager,
@@ -91,30 +91,48 @@ func installPlatform(pm *packagemanager.PackageManager,
 			return err
 		}
 	}
-	downloadPlatform(pm, platformRelease, downloadCB)
+	err := downloadPlatform(pm, platformRelease, downloadCB)
+	if err != nil {
+		return err
+	}
 	taskCB(&rpc.TaskProgress{Completed: true})
 
 	// Install tools first
 	for _, tool := range toolsToInstall {
 		err := commands.InstallToolRelease(pm, tool, taskCB)
 		if err != nil {
-			// TODO: handle error
+			return err
 		}
 	}
 
-	// Are we installing or upgrading?
-	platform := platformRelease.Platform
-	installed := pm.GetInstalledPlatformRelease(platform)
+	installed := pm.GetInstalledPlatformRelease(platformRelease.Platform)
+	installedTools := []*cores.ToolRelease{}
 	if installed == nil {
+		// No version of this platform is installed
 		log.Info("Installing platform")
 		taskCB(&rpc.TaskProgress{Name: "Installing " + platformRelease.String()})
 	} else {
-		log.Info("Updating platform " + installed.String())
-		taskCB(&rpc.TaskProgress{Name: "Updating " + installed.String() + " with " + platformRelease.String()})
+		// A platform with a different version is already installed
+		log.Info("Upgrading platform " + installed.String())
+		taskCB(&rpc.TaskProgress{Name: "Upgrading " + installed.String() + " with " + platformRelease.String()})
+		platformRef := &packagemanager.PlatformReference{
+			Package:              platformRelease.Platform.Package.Name,
+			PlatformArchitecture: platformRelease.Platform.Architecture,
+			PlatformVersion:      installed.Version,
+		}
+
+		// Get a list of tools used by the currently installed platform version.
+		// This must be done so tools used by the currently installed version are
+		// removed if not used also by the newly installed version.
+		var err error
+		_, installedTools, err = pm.FindPlatformReleaseDependencies(platformRef)
+		if err != nil {
+			return fmt.Errorf("can't find dependencies for platform %s: %w", platformRef, err)
+		}
 	}
 
 	// Install
-	err := pm.InstallPlatform(platformRelease)
+	err = pm.InstallPlatform(platformRelease)
 	if err != nil {
 		log.WithError(err).Error("Cannot install platform")
 		return err
@@ -126,8 +144,8 @@ func installPlatform(pm *packagemanager.PackageManager,
 
 		// In case of error try to rollback
 		if errUn != nil {
-			log.WithError(errUn).Error("Error updating platform.")
-			taskCB(&rpc.TaskProgress{Message: "Error updating platform: " + err.Error()})
+			log.WithError(errUn).Error("Error upgrading platform.")
+			taskCB(&rpc.TaskProgress{Message: "Error upgrading platform: " + err.Error()})
 
 			// Rollback
 			if err := pm.UninstallPlatform(platformRelease); err != nil {
@@ -135,8 +153,16 @@ func installPlatform(pm *packagemanager.PackageManager,
 				taskCB(&rpc.TaskProgress{Message: "Error rolling-back changes: " + err.Error()})
 			}
 
-			return fmt.Errorf("updating platform: %s", errUn)
+			return fmt.Errorf("upgrading platform: %s", errUn)
 		}
+
+		// Uninstall unused tools
+		for _, tool := range installedTools {
+			if !pm.IsToolRequired(tool) {
+				uninstallToolRelease(pm, tool, taskCB)
+			}
+		}
+
 	}
 
 	// Perform post install

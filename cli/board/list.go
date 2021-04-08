@@ -26,7 +26,7 @@ import (
 	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/cli/instance"
 	"github.com/arduino/arduino-cli/commands/board"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/arduino-cli/table"
 	"github.com/spf13/cobra"
 )
@@ -109,6 +109,7 @@ func watchList(cmd *cobra.Command, inst *rpc.Instance) {
 			Protocol:      event.Port.Protocol,
 			ProtocolLabel: event.Port.ProtocolLabel,
 			Boards:        event.Port.Boards,
+			SerialNumber:  event.Port.SerialNumber,
 			Error:         event.Error,
 		})
 	}
@@ -146,7 +147,7 @@ func (dr result) String() string {
 		if boards := port.GetBoards(); len(boards) > 0 {
 			sort.Slice(boards, func(i, j int) bool {
 				x, y := boards[i], boards[j]
-				return x.GetName() < y.GetName() || (x.GetName() == y.GetName() && x.GetFQBN() < y.GetFQBN())
+				return x.GetName() < y.GetName() || (x.GetName() == y.GetName() && x.GetFqbn() < y.GetFqbn())
 			})
 			for _, b := range boards {
 				board := b.GetName()
@@ -154,7 +155,7 @@ func (dr result) String() string {
 				// to improve the user experience, show on a dedicated column
 				// the name of the core supporting the board detected
 				var coreName = ""
-				fqbn, err := cores.ParseFQBN(b.GetFQBN())
+				fqbn, err := cores.ParseFQBN(b.GetFqbn())
 				if err == nil {
 					coreName = fmt.Sprintf("%s:%s", fqbn.Package, fqbn.PlatformArch)
 				}
@@ -181,6 +182,7 @@ type watchEvent struct {
 	Protocol      string               `json:"protocol,omitempty"`
 	ProtocolLabel string               `json:"protocol_label,omitempty"`
 	Boards        []*rpc.BoardListItem `json:"boards,omitempty"`
+	SerialNumber  string               `json:"serial_number,omitempty"`
 	Error         string               `json:"error,omitempty"`
 }
 
@@ -204,7 +206,7 @@ func (dr watchEvent) String() string {
 	if boards := dr.Boards; len(boards) > 0 {
 		sort.Slice(boards, func(i, j int) bool {
 			x, y := boards[i], boards[j]
-			return x.GetName() < y.GetName() || (x.GetName() == y.GetName() && x.GetFQBN() < y.GetFQBN())
+			return x.GetName() < y.GetName() || (x.GetName() == y.GetName() && x.GetFqbn() < y.GetFqbn())
 		})
 		for _, b := range boards {
 			board := b.GetName()
@@ -212,7 +214,7 @@ func (dr watchEvent) String() string {
 			// to improve the user experience, show on a dedicated column
 			// the name of the core supporting the board detected
 			var coreName = ""
-			fqbn, err := cores.ParseFQBN(b.GetFQBN())
+			fqbn, err := cores.ParseFQBN(b.GetFqbn())
 			if err == nil {
 				coreName = fmt.Sprintf("%s:%s", fqbn.Package, fqbn.PlatformArch)
 			}

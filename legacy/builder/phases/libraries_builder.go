@@ -57,6 +57,14 @@ func (s *LibrariesBuilder) Run(ctx *types.Context) error {
 	return nil
 }
 
+func directoryContainsFile(folder *paths.Path) bool {
+	if files, err := folder.ReadDir(); err == nil {
+		files.FilterOutDirs()
+		return len(files) > 0
+	}
+	return false
+}
+
 func findExpectedPrecompiledLibFolder(ctx *types.Context, library *libraries.Library) *paths.Path {
 	mcu := ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_BUILD_MCU)
 	// Add fpu specifications if they exist
@@ -90,7 +98,7 @@ func findExpectedPrecompiledLibFolder(ctx *types.Context, library *libraries.Lib
 	if len(fpuSpecs) > 0 {
 		fpuSpecs = strings.TrimRight(fpuSpecs, "-")
 		fullPrecompDir := library.SourceDir.Join(mcu).Join(fpuSpecs)
-		if fullPrecompDir.Exist() {
+		if fullPrecompDir.Exist() && directoryContainsFile(fullPrecompDir) {
 			logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Using precompiled library in {0}", fullPrecompDir)
 			return fullPrecompDir
 		}
@@ -98,7 +106,7 @@ func findExpectedPrecompiledLibFolder(ctx *types.Context, library *libraries.Lib
 	}
 
 	precompDir := library.SourceDir.Join(mcu)
-	if precompDir.Exist() {
+	if precompDir.Exist() && directoryContainsFile(precompDir) {
 		logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Using precompiled library in {0}", precompDir)
 		return precompDir
 	}

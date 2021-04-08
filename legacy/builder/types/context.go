@@ -26,7 +26,7 @@ import (
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesmanager"
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesresolver"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 )
@@ -91,19 +91,20 @@ type Context struct {
 	PlatformKeyRewrites    PlatforKeysRewrite
 	HardwareRewriteResults map[*cores.PlatformRelease][]PlatforKeyRewrite
 
-	BuildProperties      *properties.Map
-	BuildCore            string
-	BuildPath            *paths.Path
-	BuildCachePath       *paths.Path
-	SketchBuildPath      *paths.Path
-	CoreBuildPath        *paths.Path
-	CoreBuildCachePath   *paths.Path
-	CoreArchiveFilePath  *paths.Path
-	CoreObjectsFiles     paths.PathList
-	LibrariesBuildPath   *paths.Path
-	LibrariesObjectFiles paths.PathList
-	PreprocPath          *paths.Path
-	SketchObjectFiles    paths.PathList
+	BuildProperties              *properties.Map
+	BuildCore                    string
+	BuildPath                    *paths.Path
+	BuildCachePath               *paths.Path
+	SketchBuildPath              *paths.Path
+	CoreBuildPath                *paths.Path
+	CoreBuildCachePath           *paths.Path
+	CoreArchiveFilePath          *paths.Path
+	CoreObjectsFiles             paths.PathList
+	LibrariesBuildPath           *paths.Path
+	LibrariesObjectFiles         paths.PathList
+	PreprocPath                  *paths.Path
+	SketchObjectFiles            paths.PathList
+	IgnoreSketchFolderNameErrors bool
 
 	CollectedSourceFiles *UniqueSourceFileQueue
 

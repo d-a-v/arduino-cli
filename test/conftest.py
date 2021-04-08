@@ -56,11 +56,13 @@ def data_dir(tmpdir_factory):
     if platform.system() == "Windows":
         with tempfile.TemporaryDirectory() as tmp:
             yield tmp
-            # shutil.rmtree(tmp, ignore_errors=True)
+            # We don't need to remove the directory since
+            # tempfile.TemporaryDirectory deletes itself
+            # automatically when exits its scope.
     else:
         data = tmpdir_factory.mktemp("ArduinoTest")
         yield str(data)
-        # shutil.rmtree(data, ignore_errors=True)
+        shutil.rmtree(data, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +83,7 @@ def downloads_dir(tmpdir_factory, worker_id):
                 lock.touch()
 
     yield str(download_dir)
-    # shutil.rmtree(download_dir, ignore_errors=True)
+    shutil.rmtree(download_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="function")
@@ -93,7 +95,7 @@ def working_dir(tmpdir_factory):
     """
     work_dir = tmpdir_factory.mktemp("ArduinoTestWork")
     yield str(work_dir)
-    # shutil.rmtree(work_dir, ignore_errors=True)
+    shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="function")

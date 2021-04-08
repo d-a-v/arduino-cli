@@ -26,11 +26,12 @@ import (
 	bldr "github.com/arduino/arduino-cli/arduino/builder"
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
+	"github.com/arduino/arduino-cli/arduino/globals"
 	"github.com/arduino/arduino-cli/arduino/serialutils"
 	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/arduino-cli/commands"
 	"github.com/arduino/arduino-cli/executils"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 	"github.com/pkg/errors"
@@ -39,7 +40,7 @@ import (
 )
 
 // Upload FIXMEDOC
-func Upload(ctx context.Context, req *rpc.UploadReq, outStream io.Writer, errStream io.Writer) (*rpc.UploadResp, error) {
+func Upload(ctx context.Context, req *rpc.UploadRequest, outStream io.Writer, errStream io.Writer) (*rpc.UploadResponse, error) {
 	logrus.Tracef("Upload %s on %s started", req.GetSketchPath(), req.GetFqbn())
 
 	// TODO: make a generic function to extract sketch from request
@@ -69,17 +70,17 @@ func Upload(ctx context.Context, req *rpc.UploadReq, outStream io.Writer, errStr
 	if err != nil {
 		return nil, err
 	}
-	return &rpc.UploadResp{}, nil
+	return &rpc.UploadResponse{}, nil
 }
 
 // UsingProgrammer FIXMEDOC
-func UsingProgrammer(ctx context.Context, req *rpc.UploadUsingProgrammerReq, outStream io.Writer, errStream io.Writer) (*rpc.UploadUsingProgrammerResp, error) {
+func UsingProgrammer(ctx context.Context, req *rpc.UploadUsingProgrammerRequest, outStream io.Writer, errStream io.Writer) (*rpc.UploadUsingProgrammerResponse, error) {
 	logrus.Tracef("Upload using programmer %s on %s started", req.GetSketchPath(), req.GetFqbn())
 
 	if req.GetProgrammer() == "" {
 		return nil, errors.New("programmer not specified")
 	}
-	_, err := Upload(ctx, &rpc.UploadReq{
+	_, err := Upload(ctx, &rpc.UploadRequest{
 		Instance:   req.GetInstance(),
 		SketchPath: req.GetSketchPath(),
 		ImportFile: req.GetImportFile(),
@@ -90,7 +91,7 @@ func UsingProgrammer(ctx context.Context, req *rpc.UploadUsingProgrammerReq, out
 		Verbose:    req.GetVerbose(),
 		Verify:     req.GetVerify(),
 	}, outStream, errStream)
-	return &rpc.UploadUsingProgrammerResp{}, err
+	return &rpc.UploadUsingProgrammerResponse{}, err
 }
 
 func runProgramAction(pm *packagemanager.PackageManager,
@@ -225,6 +226,10 @@ func runProgramAction(pm *packagemanager.PackageManager,
 				errStream.Write([]byte(fmt.Sprintf("Warning: tool '%s' is not installed. It might not be available for your OS.", requiredTool)))
 			}
 		}
+	}
+
+	if !uploadProperties.ContainsKey("upload.protocol") && programmer == nil {
+		return fmt.Errorf("a programmer is required to upload for this board")
 	}
 
 	// Set properties for verbose upload
@@ -452,7 +457,7 @@ func determineBuildPathAndSketchName(importFile, importDir string, sketch *sketc
 
 	// Case 4: only sketch specified. In this case we use the generated build path
 	// and the given sketch name.
-	return bldr.GenBuildPath(sketch.FullPath), sketch.Name + ".ino", nil
+	return bldr.GenBuildPath(sketch.FullPath), sketch.Name + sketch.MainFileExtension, nil
 }
 
 func detectSketchNameFromBuildPath(buildPath *paths.Path) (string, error) {
@@ -462,11 +467,13 @@ func detectSketchNameFromBuildPath(buildPath *paths.Path) (string, error) {
 	}
 
 	if absBuildPath, err := buildPath.Abs(); err == nil {
-		candidateName := absBuildPath.Base() + ".ino"
-		f := files.Clone()
-		f.FilterPrefix(candidateName + ".")
-		if f.Len() > 0 {
-			return candidateName, nil
+		for ext := range globals.MainFileValidExtensions {
+			candidateName := absBuildPath.Base() + ext
+			f := files.Clone()
+			f.FilterPrefix(candidateName + ".")
+			if f.Len() > 0 {
+				return candidateName, nil
+			}
 		}
 	}
 
@@ -479,7 +486,7 @@ func detectSketchNameFromBuildPath(buildPath *paths.Path) (string, error) {
 
 		// Sometimes we may have particular files like:
 		// Blink.ino.with_bootloader.bin
-		if filepath.Ext(name) != ".ino" {
+		if _, ok := globals.MainFileValidExtensions[filepath.Ext(name)]; !ok {
 			// just ignore those files
 			continue
 		}

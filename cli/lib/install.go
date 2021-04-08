@@ -28,7 +28,8 @@ import (
 	"github.com/arduino/arduino-cli/cli/output"
 	"github.com/arduino/arduino-cli/commands/lib"
 	"github.com/arduino/arduino-cli/configuration"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	"github.com/arduino/go-paths-helper"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +40,9 @@ func initInstallCommand() *cobra.Command {
 		Long:  "Installs one or more specified libraries into the system.",
 		Example: "" +
 			"  " + os.Args[0] + " lib install AudioZero       # for the latest version.\n" +
-			"  " + os.Args[0] + " lib install AudioZero@1.0.0 # for the specific version.",
+			"  " + os.Args[0] + " lib install AudioZero@1.0.0 # for the specific version.\n" +
+			"  " + os.Args[0] + " lib install --git-url https://github.com/arduino-libraries/WiFi101.git https://github.com/arduino-libraries/ArduinoBLE.git\n" +
+			"  " + os.Args[0] + " lib install --zip-path /path/to/WiFi101.zip /path/to/ArduinoBLE.zip\n",
 		Args: cobra.MinimumNArgs(1),
 		Run:  runInstallCommand,
 	}
@@ -72,27 +75,39 @@ func runInstallCommand(cmd *cobra.Command, args []string) {
 	}
 
 	if installFlags.zipPath {
-		ziplibraryInstallReq := &rpc.ZipLibraryInstallReq{
-			Instance: instance,
-			Path:     args[0],
-		}
-		err := lib.ZipLibraryInstall(context.Background(), ziplibraryInstallReq, output.TaskProgress())
-		if err != nil {
-			feedback.Errorf("Error installing Zip Library: %v", err)
-			os.Exit(errorcodes.ErrGeneric)
+		for _, path := range args {
+			err := lib.ZipLibraryInstall(context.Background(), &rpc.ZipLibraryInstallRequest{
+				Instance:  instance,
+				Path:      path,
+				Overwrite: true,
+			}, output.TaskProgress())
+			if err != nil {
+				feedback.Errorf("Error installing Zip Library: %v", err)
+				os.Exit(errorcodes.ErrGeneric)
+			}
 		}
 		return
 	}
 
 	if installFlags.gitURL {
-		gitlibraryInstallReq := &rpc.GitLibraryInstallReq{
-			Instance: instance,
-			Url:      args[0],
-		}
-		err := lib.GitLibraryInstall(context.Background(), gitlibraryInstallReq, output.TaskProgress())
-		if err != nil {
-			feedback.Errorf("Error installing Git Library: %v", err)
-			os.Exit(errorcodes.ErrGeneric)
+		for _, url := range args {
+			if url == "." {
+				wd, err := paths.Getwd()
+				if err != nil {
+					feedback.Errorf("Couldn't get current working directory: %v", err)
+					os.Exit(errorcodes.ErrGeneric)
+				}
+				url = wd.String()
+			}
+			err := lib.GitLibraryInstall(context.Background(), &rpc.GitLibraryInstallRequest{
+				Instance:  instance,
+				Url:       url,
+				Overwrite: true,
+			}, output.TaskProgress())
+			if err != nil {
+				feedback.Errorf("Error installing Git Library: %v", err)
+				os.Exit(errorcodes.ErrGeneric)
+			}
 		}
 		return
 	}
@@ -103,49 +118,16 @@ func runInstallCommand(cmd *cobra.Command, args []string) {
 		os.Exit(errorcodes.ErrBadArgument)
 	}
 
-	toInstall := map[string]*rpc.LibraryDependencyStatus{}
-	if installFlags.noDeps {
-		for _, libRef := range libRefs {
-			toInstall[libRef.Name] = &rpc.LibraryDependencyStatus{
-				Name:            libRef.Name,
-				VersionRequired: libRef.Version,
-			}
-		}
-	} else {
-		for _, libRef := range libRefs {
-			depsResp, err := lib.LibraryResolveDependencies(context.Background(), &rpc.LibraryResolveDependenciesReq{
-				Instance: instance,
-				Name:     libRef.Name,
-				Version:  libRef.Version,
-			})
-			if err != nil {
-				feedback.Errorf("Error resolving dependencies for %s: %s", libRef, err)
-				os.Exit(errorcodes.ErrGeneric)
-			}
-			for _, dep := range depsResp.GetDependencies() {
-				feedback.Printf("%s depends on %s@%s", libRef, dep.GetName(), dep.GetVersionRequired())
-				if existingDep, has := toInstall[dep.GetName()]; has {
-					if existingDep.GetVersionRequired() != dep.GetVersionRequired() {
-						// TODO: make a better error
-						feedback.Errorf("The library %s is required in two different versions: %s and %s",
-							dep.GetName(), dep.GetVersionRequired(), existingDep.GetVersionRequired())
-						os.Exit(errorcodes.ErrGeneric)
-					}
-				}
-				toInstall[dep.GetName()] = dep
-			}
-		}
-	}
-
-	for _, library := range toInstall {
-		libraryInstallReq := &rpc.LibraryInstallReq{
+	for _, libRef := range libRefs {
+		libraryInstallRequest := &rpc.LibraryInstallRequest{
 			Instance: instance,
-			Name:     library.Name,
-			Version:  library.VersionRequired,
+			Name:     libRef.Name,
+			Version:  libRef.Version,
+			NoDeps:   installFlags.noDeps,
 		}
-		err := lib.LibraryInstall(context.Background(), libraryInstallReq, output.ProgressBar(), output.TaskProgress())
+		err := lib.LibraryInstall(context.Background(), libraryInstallRequest, output.ProgressBar(), output.TaskProgress())
 		if err != nil {
-			feedback.Errorf("Error installing %s: %v", library, err)
+			feedback.Errorf("Error installing %s: %v", libRef.Name, err)
 			os.Exit(errorcodes.ErrGeneric)
 		}
 	}

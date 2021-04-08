@@ -29,9 +29,9 @@ func TestLoadVIDPIDSpecificPropertiesWhenNoVIDPIDAreProvided(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:      paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:      paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:  paths.NewPathList("downloaded_tools", "./tools_builtin"),
-		SketchLocation:    paths.New("sketch1", "sketch.ino"),
+		SketchLocation:    paths.New("sketch1", "sketch1.ino"),
 		FQBN:              parseFQBN(t, "arduino:avr:micro"),
 		ArduinoAPIVersion: "10600",
 	}
@@ -59,9 +59,9 @@ func TestLoadVIDPIDSpecificProperties(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:      paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:      paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:  paths.NewPathList("downloaded_tools", "./tools_builtin"),
-		SketchLocation:    paths.New("sketch1", "sketch.ino"),
+		SketchLocation:    paths.New("sketch1", "sketch1.ino"),
 		FQBN:              parseFQBN(t, "arduino:avr:micro"),
 		ArduinoAPIVersion: "10600",
 	}

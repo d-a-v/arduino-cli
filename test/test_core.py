@@ -13,11 +13,14 @@
 # software without disclosing the source code of your own applications. To purchase
 # a commercial license, send an email to license@arduino.cc.
 import os
+import datetime
+import time
 import platform
 import pytest
 import simplejson as json
 import tempfile
 import hashlib
+from git import Repo
 from pathlib import Path
 
 
@@ -47,68 +50,60 @@ def test_core_search(run_command, httpserver):
     data = json.loads(result.stdout)
     assert 2 == len(data)
 
+    def get_platforms(stdout):
+        data = json.loads(stdout)
+        platforms = {p["id"]: [] for p in data}
+        for p in data:
+            platforms[p["id"]].append(p["latest"])
+        return platforms
+
     # Search all Retrokit platforms
-    result = run_command(f"core search retrokit --all --additional-urls={url}")
+    result = run_command(f"core search retrokit --all --additional-urls={url} --format json")
     assert result.ok
-    lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.5", "RK002"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.6", "RK002"] in lines
-    header_index = lines.index(["ID", "Version", "Name"])
-    # We use black to format and flake8 to lint .py files but they disagree on certain
-    # things like this one, thus we ignore this specific flake8 rule and stand by black
-    # opinion.
-    # We ignore this specific case because ignoring it globally would probably cause more
-    # issue. For more info about the rule see: https://www.flake8rules.com/rules/E203.html
-    assert 2 == len(lines[header_index + 1 :])  # noqa: E203
+    platforms = get_platforms(result.stdout)
+    assert "1.0.5" in platforms["Retrokits-RK002:arm"]
+    assert "1.0.6" in platforms["Retrokits-RK002:arm"]
 
     # Search using Retrokit Package Maintainer
-    result = run_command(f"core search Retrokits-RK002 --all --additional-urls={url}")
+    result = run_command(f"core search Retrokits-RK002 --all --additional-urls={url} --format json")
     assert result.ok
-    lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.5", "RK002"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.6", "RK002"] in lines
-    header_index = lines.index(["ID", "Version", "Name"])
-    # We use black to format and flake8 to lint .py files but they disagree on certain
-    # things like this one, thus we ignore this specific flake8 rule and stand by black
-    # opinion.
-    # We ignore this specific case because ignoring it globally would probably cause more
-    # issue. For more info about the rule see: https://www.flake8rules.com/rules/E203.html
-    assert 2 == len(lines[header_index + 1 :])  # noqa: E203
+    platforms = get_platforms(result.stdout)
+    assert "1.0.5" in platforms["Retrokits-RK002:arm"]
+    assert "1.0.6" in platforms["Retrokits-RK002:arm"]
 
     # Search using the Retrokit Platform name
-    result = run_command(f"core search rk002 --all --additional-urls={url}")
+    result = run_command(f"core search rk002 --all --additional-urls={url} --format json")
     assert result.ok
-    lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.5", "RK002"] in lines
-    assert ["Retrokits-RK002:arm", "1.0.6", "RK002"] in lines
-    header_index = lines.index(["ID", "Version", "Name"])
-    # We use black to format and flake8 to lint .py files but they disagree on certain
-    # things like this one, thus we ignore this specific flake8 rule and stand by black
-    # opinion.
-    # We ignore this specific case because ignoring it globally would probably cause more
-    # issue. For more info about the rule see: https://www.flake8rules.com/rules/E203.html
-    assert 2 == len(lines[header_index + 1 :])  # noqa: E203
+    platforms = get_platforms(result.stdout)
+    assert "1.0.5" in platforms["Retrokits-RK002:arm"]
+    assert "1.0.6" in platforms["Retrokits-RK002:arm"]
 
-    # Search using a board name
-    result = run_command(f"core search myboard --all --additional-urls={url}")
+    # Search using board names
+    result = run_command(f"core search myboard --all --additional-urls={url} --format json")
     assert result.ok
-    lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
-    assert ["Package:x86", "1.2.3", "Platform"] in lines
-    header_index = lines.index(["ID", "Version", "Name"])
-    # We use black to format and flake8 to lint .py files but they disagree on certain
-    # things like this one, thus we ignore this specific flake8 rule and stand by black
-    # opinion.
-    # We ignore this specific case because ignoring it globally would probably cause more
-    # issue. For more info about the rule see: https://www.flake8rules.com/rules/E203.html
-    assert 1 == len(lines[header_index + 1 :])  # noqa: E203
+    platforms = get_platforms(result.stdout)
+    assert "1.2.3" in platforms["Package:x86"]
+
+    def run_search(search_args, expected_ids):
+        res = run_command(f"core search --format json {search_args}")
+        assert res.ok
+        data = json.loads(res.stdout)
+        platform_ids = [p["id"] for p in data]
+        for platform_id in expected_ids:
+            assert platform_id in platform_ids
+
+    run_search("mkr1000", ["arduino:samd"])
+    run_search("mkr 1000", ["arduino:samd"])
+
+    run_search("yún", ["arduino:avr"])
+    run_search("yùn", ["arduino:avr"])
+    run_search("yun", ["arduino:avr"])
+
+    run_search("nano", ["arduino:avr", "arduino:megaavr", "arduino:samd", "arduino:mbed"])
+    run_search("nano 33", ["arduino:samd", "arduino:mbed"])
+    run_search("nano ble", ["arduino:mbed"])
+    run_search("ble", ["arduino:mbed"])
+    run_search("ble nano", ["arduino:mbed"])
 
 
 def test_core_search_no_args(run_command, httpserver):
@@ -130,9 +125,7 @@ def test_core_search_no_args(run_command, httpserver):
     assert result.ok
     num_platforms = 0
     lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    # Index update output and the header are printed on the first lines
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
+    # The header is printed on the first lines
     assert ["test:x86", "2.0.0", "test_core"] in lines
     header_index = lines.index(["ID", "Version", "Name"])
     # We use black to format and flake8 to lint .py files but they disagree on certain
@@ -146,7 +139,7 @@ def test_core_search_no_args(run_command, httpserver):
     result = run_command("core search --format json")
     assert result.ok
     platforms = json.loads(result.stdout)
-    assert 1 == len([e for e in platforms if e.get("Name") == "test_core"])
+    assert 1 == len([e for e in platforms if e.get("name") == "test_core"])
     assert len(platforms) == num_platforms
 
     # list all with additional urls, check the test core is there
@@ -154,9 +147,7 @@ def test_core_search_no_args(run_command, httpserver):
     assert result.ok
     num_platforms = 0
     lines = [l.strip().split() for l in result.stdout.strip().splitlines()]
-    # Index update output and the header are printed on the first lines
-    assert ["Updating", "index:", "package_index.json", "downloaded"] in lines
-    assert ["Updating", "index:", "package_index.json.sig", "downloaded"] in lines
+    # The header is printed on the first lines
     assert ["test:x86", "2.0.0", "test_core"] in lines
     header_index = lines.index(["ID", "Version", "Name"])
     # We use black to format and flake8 to lint .py files but they disagree on certain
@@ -170,7 +161,7 @@ def test_core_search_no_args(run_command, httpserver):
     result = run_command(f"core search --format json --additional-urls={url}")
     assert result.ok
     platforms = json.loads(result.stdout)
-    assert 1 == len([e for e in platforms if e.get("Name") == "test_core"])
+    assert 1 == len([e for e in platforms if e.get("name") == "test_core"])
     assert len(platforms) == num_platforms
 
 
@@ -247,10 +238,10 @@ def test_core_download(run_command, downloads_dir):
 def _in(jsondata, name, version=None):
     installed_cores = json.loads(jsondata)
     for c in installed_cores:
-        if name == c.get("ID"):
+        if name == c.get("id"):
             if version is None:
                 return True
-            elif version == c.get("Installed"):
+            elif version == c.get("installed"):
                 return True
     return False
 
@@ -363,3 +354,179 @@ def test_core_update_with_local_url(run_command):
     res = run_command(f'core update-index --additional-urls="file://{test_index}"')
     assert res.ok
     assert "Updating index: test_index.json downloaded" in res.stdout
+
+
+def test_core_search_manually_installed_cores_not_printed(run_command, data_dir):
+    assert run_command("core update-index")
+
+    # Verifies only cores in board manager are shown
+    res = run_command("core search --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    num_cores = len(cores)
+    assert num_cores > 0
+
+    # Manually installs a core in sketchbooks hardware folder
+    git_url = "https://github.com/arduino/ArduinoCore-avr.git"
+    repo_dir = Path(data_dir, "hardware", "arduino-beta-development", "avr")
+    assert Repo.clone_from(git_url, repo_dir, multi_options=["-b 1.8.3"])
+
+    # Verifies manually installed core is not shown
+    res = run_command("core search --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    assert num_cores == len(cores)
+    mapped = {core["id"]: core for core in cores}
+    core_id = "arduino-beta-development:avr"
+    assert core_id not in mapped
+
+
+def test_core_list_all_manually_installed_core(run_command, data_dir):
+    assert run_command("core update-index")
+
+    # Verifies only cores in board manager are shown
+    res = run_command("core list --all --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    num_cores = len(cores)
+    assert num_cores > 0
+
+    # Manually installs a core in sketchbooks hardware folder
+    git_url = "https://github.com/arduino/ArduinoCore-avr.git"
+    repo_dir = Path(data_dir, "hardware", "arduino-beta-development", "avr")
+    assert Repo.clone_from(git_url, repo_dir, multi_options=["-b 1.8.3"])
+
+    # Verifies manually installed core is shown
+    res = run_command("core list --all --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    assert num_cores + 1 == len(cores)
+    mapped = {core["id"]: core for core in cores}
+    expected_core_id = "arduino-beta-development:avr"
+    assert expected_core_id in mapped
+    assert "Arduino AVR Boards" == mapped[expected_core_id]["name"]
+    assert "1.8.3" == mapped[expected_core_id]["latest"]
+
+
+def test_core_list_updatable_all_flags(run_command, data_dir):
+    assert run_command("core update-index")
+
+    # Verifies only cores in board manager are shown
+    res = run_command("core list --all --updatable --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    num_cores = len(cores)
+    assert num_cores > 0
+
+    # Manually installs a core in sketchbooks hardware folder
+    git_url = "https://github.com/arduino/ArduinoCore-avr.git"
+    repo_dir = Path(data_dir, "hardware", "arduino-beta-development", "avr")
+    assert Repo.clone_from(git_url, repo_dir, multi_options=["-b 1.8.3"])
+
+    # Verifies using both --updatable and --all flags --all takes precedence
+    res = run_command("core list --all --updatable --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    assert num_cores + 1 == len(cores)
+    mapped = {core["id"]: core for core in cores}
+    expected_core_id = "arduino-beta-development:avr"
+    assert expected_core_id in mapped
+    assert "Arduino AVR Boards" == mapped[expected_core_id]["name"]
+    assert "1.8.3" == mapped[expected_core_id]["latest"]
+
+
+def test_core_upgrade_removes_unused_tools(run_command, data_dir):
+    assert run_command("update")
+
+    # Installs a core
+    assert run_command("core install arduino:avr@1.8.2")
+
+    # Verifies expected tool is installed
+    tool_path = Path(data_dir, "packages", "arduino", "tools", "avr-gcc", "7.3.0-atmel3.6.1-arduino5")
+    assert tool_path.exists()
+
+    # Upgrades core
+    assert run_command("core upgrade arduino:avr")
+
+    # Verifies tool is uninstalled since it's not used by newer core version
+    assert not tool_path.exists()
+
+
+def test_core_install_removes_unused_tools(run_command, data_dir):
+    assert run_command("update")
+
+    # Installs a core
+    assert run_command("core install arduino:avr@1.8.2")
+
+    # Verifies expected tool is installed
+    tool_path = Path(data_dir, "packages", "arduino", "tools", "avr-gcc", "7.3.0-atmel3.6.1-arduino5")
+    assert tool_path.exists()
+
+    # Installs newer version of already installed core
+    assert run_command("core install arduino:avr@1.8.3")
+
+    # Verifies tool is uninstalled since it's not used by newer core version
+    assert not tool_path.exists()
+
+
+def test_core_list_with_installed_json(run_command, data_dir):
+    assert run_command("update")
+
+    # Install core
+    url = "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+    assert run_command(f"core update-index --additional-urls={url}")
+    assert run_command(f"core install adafruit:avr@1.4.13 --additional-urls={url}")
+
+    # Verifies installed core is correctly found and name is set
+    res = run_command("core list --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    mapped = {core["id"]: core for core in cores}
+    assert len(mapped) == 1
+    assert "adafruit:avr" in mapped
+    assert mapped["adafruit:avr"]["name"] == "Adafruit AVR Boards"
+
+    # Deletes installed.json file, this file stores information about the core,
+    # that is used mostly when removing package indexes and their cores are still installed;
+    # this way we don't lose much information about it.
+    # It might happen that the user has old cores installed before the addition of
+    # the installed.json file so we need to handle those cases.
+    installed_json = Path(data_dir, "packages", "adafruit", "hardware", "avr", "1.4.13", "installed.json")
+    installed_json.unlink()
+
+    # Verifies installed core is still found and name is set
+    res = run_command("core list --format json")
+    assert res.ok
+    cores = json.loads(res.stdout)
+    mapped = {core["id"]: core for core in cores}
+    assert len(mapped) == 1
+    assert "adafruit:avr" in mapped
+    # Name for this core changes since if there's installed.json file we read it from
+    # platform.txt, turns out that this core has different names used in different files
+    # thus the change.
+    assert mapped["adafruit:avr"]["name"] == "Adafruit Boards"
+
+
+def test_core_search_update_index_delay(run_command, data_dir):
+    assert run_command("update")
+
+    # Verifies index update is not run
+    res = run_command("core search")
+    assert res.ok
+    assert "Updating index" not in res.stdout
+
+    # Change edit time of package index file
+    index_file = Path(data_dir, "package_index.json")
+    date = datetime.datetime.now() - datetime.timedelta(hours=25)
+    mod_time = time.mktime(date.timetuple())
+    os.utime(index_file, (mod_time, mod_time))
+
+    # Verifies index update is run
+    res = run_command("core search")
+    assert res.ok
+    assert "Updating index" in res.stdout
+
+    # Verifies index update is not run again
+    res = run_command("core search")
+    assert res.ok
+    assert "Updating index" not in res.stdout

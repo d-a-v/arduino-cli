@@ -29,11 +29,11 @@ import (
 	"github.com/arduino/arduino-cli/cli/globals"
 	"github.com/arduino/arduino-cli/commands/daemon"
 	"github.com/arduino/arduino-cli/configuration"
-	srv_commands "github.com/arduino/arduino-cli/rpc/commands"
-	srv_debug "github.com/arduino/arduino-cli/rpc/debug"
-	srv_monitor "github.com/arduino/arduino-cli/rpc/monitor"
-	srv_settings "github.com/arduino/arduino-cli/rpc/settings"
-	"github.com/arduino/arduino-cli/telemetry"
+	"github.com/arduino/arduino-cli/metrics"
+	srv_commands "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	srv_debug "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/debug/v1"
+	srv_monitor "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/monitor/v1"
+	srv_settings "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/settings/v1"
 	"github.com/segmentio/stats/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -60,8 +60,8 @@ var daemonize bool
 
 func runDaemonCommand(cmd *cobra.Command, args []string) {
 
-	if configuration.Settings.GetBool("telemetry.enabled") {
-		telemetry.Activate("daemon")
+	if configuration.Settings.GetBool("metrics.enabled") {
+		metrics.Activate("daemon")
 		stats.Incr("daemon", stats.T("success", "true"))
 		defer stats.Flush()
 	}
@@ -72,25 +72,25 @@ func runDaemonCommand(cmd *cobra.Command, args []string) {
 	configuration.Settings.Set("network.user_agent_ext", "daemon")
 
 	// register the commands service
-	srv_commands.RegisterArduinoCoreServer(s, &daemon.ArduinoCoreServerImpl{
+	srv_commands.RegisterArduinoCoreServiceServer(s, &daemon.ArduinoCoreServerImpl{
 		VersionString: globals.VersionInfo.VersionString,
 	})
 
 	// Register the monitors service
-	srv_monitor.RegisterMonitorServer(s, &daemon.MonitorService{})
+	srv_monitor.RegisterMonitorServiceServer(s, &daemon.MonitorService{})
 
 	// Register the settings service
-	srv_settings.RegisterSettingsServer(s, &daemon.SettingsService{})
+	srv_settings.RegisterSettingsServiceServer(s, &daemon.SettingsService{})
 
 	// Register the debug session service
-	srv_debug.RegisterDebugServer(s, &daemon.DebugService{})
+	srv_debug.RegisterDebugServiceServer(s, &daemon.DebugService{})
 
 	if !daemonize {
 		// When parent process ends terminate also the daemon
 		go func() {
 			// Stdin is closed when the controlling parent process ends
 			_, _ = io.Copy(ioutil.Discard, os.Stdin)
-			// Flush telemetry stats (this is a no-op if telemetry is disabled)
+			// Flush metrics stats (this is a no-op if metrics is disabled)
 			stats.Flush()
 			os.Exit(0)
 		}()

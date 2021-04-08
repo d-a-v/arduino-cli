@@ -12,17 +12,16 @@ require (
 	github.com/cmaglie/pb v1.0.27
 	github.com/codeclysm/cc v1.2.2 // indirect
 	github.com/codeclysm/extract/v3 v3.0.2
-	github.com/facchinm/gohex v0.0.0-20201008150446-be2a6be25790
 	github.com/fatih/color v1.7.0
 	github.com/fluxio/iohelpers v0.0.0-20160419043813-3a4dd67a94d2 // indirect
 	github.com/fluxio/multierror v0.0.0-20160419044231-9c68d39025e5 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/golang/protobuf v1.4.2
 	github.com/h2non/filetype v1.0.8 // indirect
-	github.com/imjasonmiller/godice v0.1.2
 	github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leonelquinteros/gotext v1.4.0
+	github.com/marcinbor85/gohex v0.0.0-20210308104911-55fb1c624d84
 	github.com/mattn/go-colorable v0.1.2
 	github.com/mattn/go-isatty v0.0.8
 	github.com/mattn/go-runewidth v0.0.9 // indirect
@@ -40,9 +39,9 @@ require (
 	github.com/spf13/viper v1.6.2
 	github.com/stretchr/testify v1.6.1
 	go.bug.st/cleanup v1.0.0
-	go.bug.st/downloader/v2 v2.1.0
+	go.bug.st/downloader/v2 v2.1.1
 	go.bug.st/relaxed-semver v0.0.0-20190922224835-391e10178d18
-	go.bug.st/serial v1.1.1
+	go.bug.st/serial v1.1.2
 	go.bug.st/serial.v1 v0.0.0-20180827123349-5f7892a7bb45 // indirect
 	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e

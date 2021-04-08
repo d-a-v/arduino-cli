@@ -33,8 +33,8 @@ import (
 	"github.com/arduino/arduino-cli/legacy/builder"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
-	"github.com/arduino/arduino-cli/telemetry"
+	"github.com/arduino/arduino-cli/metrics"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 	"github.com/pkg/errors"
@@ -43,11 +43,24 @@ import (
 )
 
 // Compile FIXMEDOC
-func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.Writer, debug bool) (r *rpc.CompileResp, e error) {
+func Compile(ctx context.Context, req *rpc.CompileRequest, outStream, errStream io.Writer, debug bool) (r *rpc.CompileResponse, e error) {
+
+	// There is a binding between the export binaries setting and the CLI flag to explicitly set it,
+	// since we want this binding to work also for the gRPC interface we must read it here in this
+	// package instead of the cli/compile one, otherwise we'd lose the binding.
+	exportBinaries := configuration.Settings.GetBool("sketch.always_export_binaries")
+	// If we'd just read the binding in any case, even if the request sets the export binaries setting,
+	// the settings value would always overwrite the request one and it wouldn't have any effect
+	// setting it for individual requests. To solve this we use a wrapper.BoolValue to handle
+	// the optionality of this property, otherwise we would have no way of knowing if the property
+	// was set in the request or it's just the default boolean value.
+	if reqExportBinaries := req.GetExportBinaries(); reqExportBinaries != nil {
+		exportBinaries = reqExportBinaries.Value
+	}
 
 	tags := map[string]string{
 		"fqbn":            req.Fqbn,
-		"sketchPath":      telemetry.Sanitize(req.SketchPath),
+		"sketchPath":      metrics.Sanitize(req.SketchPath),
 		"showProperties":  strconv.FormatBool(req.ShowProperties),
 		"preprocess":      strconv.FormatBool(req.Preprocess),
 		"buildProperties": strings.Join(req.BuildProperties, ","),
@@ -55,11 +68,11 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 		"verbose":         strconv.FormatBool(req.Verbose),
 		"quiet":           strconv.FormatBool(req.Quiet),
 		"vidPid":          req.VidPid,
-		"exportDir":       telemetry.Sanitize(req.GetExportDir()),
+		"exportDir":       metrics.Sanitize(req.GetExportDir()),
 		"jobs":            strconv.FormatInt(int64(req.Jobs), 10),
 		"libraries":       strings.Join(req.Libraries, ","),
 		"clean":           strconv.FormatBool(req.GetClean()),
-		"exportBinaries":  strconv.FormatBool(req.GetExportBinaries()),
+		"exportBinaries":  strconv.FormatBool(exportBinaries),
 	}
 
 	// Use defer func() to evaluate tags map when function returns
@@ -194,57 +207,55 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 
 	builderCtx.SourceOverride = req.GetSourceOverride()
 
-	// Use defer() to create an rpc.CompileResp with all the information available at the
-	// moment of return.
+	r = &rpc.CompileResponse{}
 	defer func() {
-		if r != nil {
-			importedLibs := []*rpc.Library{}
-			for _, lib := range builderCtx.ImportedLibraries {
-				importedLibs = append(importedLibs, lib.ToRPCLibrary())
-			}
-
-			r.BuildPath = builderCtx.BuildPath.String()
-			r.UsedLibraries = importedLibs
-			r.ExecutableSectionsSize = builderCtx.ExecutableSectionsSize.ToRPCExecutableSectionSizeArray()
+		if p := builderCtx.BuildPath; p != nil {
+			r.BuildPath = p.String()
 		}
 	}()
 
 	// if --preprocess or --show-properties were passed, we can stop here
 	if req.GetShowProperties() {
-		return &rpc.CompileResp{}, builder.RunParseHardwareAndDumpBuildProperties(builderCtx)
+		return r, builder.RunParseHardwareAndDumpBuildProperties(builderCtx)
 	} else if req.GetPreprocess() {
-		return &rpc.CompileResp{}, builder.RunPreprocess(builderCtx)
+		return r, builder.RunPreprocess(builderCtx)
 	}
 
 	// if it's a regular build, go on...
 	if err := builder.RunBuilder(builderCtx); err != nil {
-		return &rpc.CompileResp{}, err
+		return r, err
 	}
 
 	// If the export directory is set we assume you want to export the binaries
-	if req.GetExportBinaries() || req.GetExportDir() != "" {
+	if req.GetExportDir() != "" {
+		exportBinaries = true
+	}
+	// If CreateCompilationDatabaseOnly is set, we do not need to export anything
+	if req.GetCreateCompilationDatabaseOnly() {
+		exportBinaries = false
+	}
+	if exportBinaries {
 		var exportPath *paths.Path
 		if exportDir := req.GetExportDir(); exportDir != "" {
 			exportPath = paths.New(exportDir)
 		} else {
-			exportPath = sketch.FullPath
 			// Add FQBN (without configs part) to export path
 			fqbnSuffix := strings.Replace(fqbn.StringWithoutConfig(), ":", ".", -1)
-			exportPath = exportPath.Join("build").Join(fqbnSuffix)
+			exportPath = sketch.FullPath.Join("build", fqbnSuffix)
 		}
 		logrus.WithField("path", exportPath).Trace("Saving sketch to export path.")
 		if err := exportPath.MkdirAll(); err != nil {
-			return nil, errors.Wrap(err, "creating output dir")
+			return r, errors.Wrap(err, "creating output dir")
 		}
 
 		// Copy all "sketch.ino.*" artifacts to the export directory
 		baseName, ok := builderCtx.BuildProperties.GetOk("build.project_name") // == "sketch.ino"
 		if !ok {
-			return nil, errors.New("missing 'build.project_name' build property")
+			return r, errors.New("missing 'build.project_name' build property")
 		}
 		buildFiles, err := builderCtx.BuildPath.ReadDir()
 		if err != nil {
-			return nil, errors.Errorf("reading build directory: %s", err)
+			return r, errors.Errorf("reading build directory: %s", err)
 		}
 		buildFiles.FilterPrefix(baseName)
 		for _, buildFile := range buildFiles {
@@ -254,11 +265,24 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 				WithField("dest", exportedFile).
 				Trace("Copying artifact.")
 			if err = buildFile.CopyTo(exportedFile); err != nil {
-				return nil, errors.Wrapf(err, "copying output file %s", buildFile)
+				return r, errors.Wrapf(err, "copying output file %s", buildFile)
 			}
 		}
 	}
 
+	importedLibs := []*rpc.Library{}
+	for _, lib := range builderCtx.ImportedLibraries {
+		rpcLib, err := lib.ToRPCLibrary()
+		if err != nil {
+			return r, fmt.Errorf("converting library %s to rpc struct: %w", lib.Name, err)
+		}
+		importedLibs = append(importedLibs, rpcLib)
+	}
+
 	logrus.Tracef("Compile %s for %s successful", sketch.Name, fqbnIn)
-	return &rpc.CompileResp{}, nil
+
+	return &rpc.CompileResponse{
+		UsedLibraries:          importedLibs,
+		ExecutableSectionsSize: builderCtx.ExecutableSectionsSize.ToRPCExecutableSectionSizeArray(),
+	}, nil
 }
