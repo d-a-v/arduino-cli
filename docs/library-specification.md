@@ -7,7 +7,9 @@ This is the specification for the Arduino library format, to be used with Arduin
 
 This new library format is intended to be used in tandem with **Library Manager**, available since Arduino IDE 1.6.2.
 The Library Manager allows users to automatically download and install libraries needed in their projects, with an easy
-to use graphical interface in the [Arduino IDE](https://www.arduino.cc/en/guide/libraries#toc3)/Pro IDE and
+to use graphical interface in the
+[Arduino IDE](https://www.arduino.cc/en/guide/libraries#toc3)/[Arduino IDE 2.0](https://www.arduino.cc/en/Tutorial/getting-started-with-ide-v2/ide-v2-installing-a-library#installing-a-library)
+and
 [Arduino Web Editor](https://create.arduino.cc/projecthub/Arduino_Genuino/getting-started-with-arduino-web-editor-on-various-platforms-4b3e4a#toc-libraries-and-the-arduino-web-editor-11)
 as well as [`arduino-cli lib`](commands/arduino-cli_lib.md).
 
@@ -79,9 +81,9 @@ otherwise below, **all fields are required**. The available fields are:
     <!-- prettier-ignore -->
   files in the linker command directly, all .o files are saved into a .a file, which is then included in the linker
   command. [1.5 format library folder structure](#layout-of-folders-and-files) is required.
-- **includes** - **(available from Arduino IDE 1.6.10)** (optional) a comma separated list of files to be added to the
-  sketch as `#include <...>` lines. This property is used with the "Include library" command in the Arduino IDE. If the
-  `includes` property is missing, all the header files (.h) on the root source folder are included.
+- **includes** - **(available from Arduino IDE 1.6.10)** (optional) a comma separated list of files of the library to be
+  added to the sketch as `#include <...>` lines. This property is used with the "Include library" command in the Arduino
+  IDE. If the `includes` property is missing, all the header files (.h) on the root source folder are included.
 - **precompiled** - **(available from Arduino IDE 1.8.6/arduino-builder 1.4.0)** (optional) enables support for .a
   (archive) and .so (shared object) files. See the ["Precompiled binaries"](#precompiled-binaries) section for
   documentation of the required location in the library for these files. The static library should be linked as an

@@ -36,7 +36,7 @@ jobs:
         shell: bash
 
       - name: Install Taskfile
-        uses: Arduino/actions/setup-taskfile@master
+        uses: arduino/setup-task@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: 3.x
@@ -124,7 +124,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Taskfile
-        uses: arduino/actions/setup-taskfile@master
+        uses: arduino/setup-task@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: 3.x
@@ -177,12 +177,6 @@ jobs:
           path: dist/*Linux_ARMv7.tar.gz
 
       - name: Upload Linux ARM64 artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: Linux_ARM64
-          path: dist/*Linux_ARM64.tar.gz
-
-      - name: Upload Linux ARM64 bit artifact
         uses: actions/upload-artifact@v2
         with:
           name: Linux_ARM64
